@@ -149,15 +149,29 @@ if chart_series_info:
     # Create scatter chart with straight lines
     chart = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
     
+    # Define grey scale colors for NoLeak series
+    grey_colors = ['#808080', '#666666', '#999999', '#555555', '#777777', '#444444', '#AAAAAA', '#333333']
+    grey_index = 0
+    
     # Add series for each file, referencing data from their respective tabs
     for series_info in chart_series_info:
-        chart.add_series({
+        series_config = {
             'name': series_info['filename'],
             'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
             'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
             'line': {'width': 2},
             'marker': {'type': 'circle', 'size': 3}
-        })
+        }
+        
+        # Check if filename contains "NoLeak" and apply grey color
+        if 'NoLeak' in series_info['filename']:
+            grey_color = grey_colors[grey_index % len(grey_colors)]
+            series_config['line']['color'] = grey_color
+            series_config['marker']['border'] = {'color': grey_color}
+            series_config['marker']['fill'] = {'color': grey_color}
+            grey_index += 1
+        
+        chart.add_series(series_config)
     
     # Configure chart with logarithmic frequency axis
     chart.set_title({'name': 'FFT Frequency vs Minimum Absolute Values'})
