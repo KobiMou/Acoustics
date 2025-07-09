@@ -149,37 +149,44 @@ if chart_series_info:
     # Create scatter chart with straight lines
     chart = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
     
-    # Define grey scale colors for NoLeak series
-    grey_colors = ['#808080', '#666666', '#999999', '#555555', '#777777', '#444444', '#AAAAAA', '#333333']
+    # Define grey scale colors for NoLeak series (ordered from darkest to lightest)
+    grey_colors = ['#333333', '#444444', '#555555', '#666666', '#777777', '#808080', '#999999', '#AAAAAA']
     
     # Define highly distinguishable colors for regular series
     distinguishable_colors = ['#FF0000', '#0000FF', '#00FF00', '#FF8000', '#8000FF', '#FF0080', '#00FFFF', '#FFFF00', 
                              '#800000', '#000080', '#008000', '#804000', '#400080', '#800040', '#008080', '#808000']
     
-    grey_index = 0
+    # First add all non-NoLeak series (colorful lines in background)
     color_index = 0
-    
-    # Add series for each file, referencing data from their respective tabs
     for series_info in chart_series_info:
-        series_config = {
-            'name': series_info['filename'],
-            'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-            'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
-            'line': {'width': 2}
-        }
-        
-        # Check if filename contains "NoLeak" and apply grey color
-        if 'NoLeak' in series_info['filename']:
-            grey_color = grey_colors[grey_index % len(grey_colors)]
-            series_config['line']['color'] = grey_color
-            grey_index += 1
-        else:
+        if 'NoLeak' not in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
+                'line': {'width': 2}
+            }
             # Apply distinguishable color for regular series
             regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
             series_config['line']['color'] = regular_color
             color_index += 1
-        
-        chart.add_series(series_config)
+            chart.add_series(series_config)
+    
+    # Then add all NoLeak series (grey lines in front)
+    grey_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
+                'line': {'width': 2}
+            }
+            # Apply grey color in ascending order (darker to lighter)
+            grey_color = grey_colors[grey_index % len(grey_colors)]
+            series_config['line']['color'] = grey_color
+            grey_index += 1
+            chart.add_series(series_config)
     
     # Configure chart with logarithmic frequency axis
     chart.set_title({'name': 'FFT Frequency vs Minimum Absolute Values'})
@@ -199,31 +206,37 @@ if chart_series_info:
     # Create scatter chart with straight lines (same as first plot)
     chartLog = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
     
-    # Reset indices for second chart
-    grey_index = 0
+    # First add all non-NoLeak series (colorful lines in background)
     color_index = 0
-    
-    # Add series for each file, referencing data from their respective tabs
     for series_info in chart_series_info:
-        series_config = {
-            'name': series_info['filename'],
-            'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-            'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
-            'line': {'width': 2}
-        }
-        
-        # Check if filename contains "NoLeak" and apply grey color
-        if 'NoLeak' in series_info['filename']:
-            grey_color = grey_colors[grey_index % len(grey_colors)]
-            series_config['line']['color'] = grey_color
-            grey_index += 1
-        else:
+        if 'NoLeak' not in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
+                'line': {'width': 2}
+            }
             # Apply distinguishable color for regular series
             regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
             series_config['line']['color'] = regular_color
             color_index += 1
-        
-        chartLog.add_series(series_config)
+            chartLog.add_series(series_config)
+    
+    # Then add all NoLeak series (grey lines in front)
+    grey_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
+                'line': {'width': 2}
+            }
+            # Apply grey color in ascending order (darker to lighter)
+            grey_color = grey_colors[grey_index % len(grey_colors)]
+            series_config['line']['color'] = grey_color
+            grey_index += 1
+            chartLog.add_series(series_config)
     
     # Configure chart with logarithmic scales for both axes
     chartLog.set_title({'name': 'FFT Frequency vs Minimum Absolute Values (Log-Log Scale)'})
