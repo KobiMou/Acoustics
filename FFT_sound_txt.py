@@ -26,6 +26,9 @@ for f in files:
     DataFrame = pd.read_csv(fullpath, header=None, skiprows=skipRows, delimiter='\s+')
     ListDataFrames.append(DataFrame)
 
+# Create summary workbook
+summaryWorkbook = xlsxwriter.Workbook('summary.xlsx')
+
 iLoop = 0
 
 for DataFrame in ListDataFrames:
@@ -73,13 +76,22 @@ for DataFrame in ListDataFrames:
         fft_MIN = np.min(fft, axis=0)  
         fftAbs_MIN = np.min(fftAbs, axis=0)      
 
-
+        # Create individual workbook for each file
         workbookName = ListFileNames[iLoop] + '_Output' + '.xlsx'
         workbook = xlsxwriter.Workbook(workbookName)
         worksheet = workbook.add_worksheet()
         worksheet.name = 'Data'
 
+        # Create worksheet in summary workbook for this file
+        summaryWorksheet = summaryWorkbook.add_worksheet(ListFileNames[iLoop])
+        
+        # Write headers for summary worksheet
+        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs']
+        for col, header in enumerate(headers):
+            summaryWorksheet.write(0, col, header)
+
         for i in range(N//2): # //2 for only positive side plotting 
+            # Write to individual file
             worksheet.write(i,0,time_Array[i])
             worksheet.write(i,1,data_Array[i])
             worksheet.write(i,2,fftFreq[i])
@@ -89,9 +101,23 @@ for DataFrame in ListDataFrames:
             worksheet.write(i,6,fft_MIN[i].real)
             worksheet.write(i,7,fft_MIN[i].imag)
             worksheet.write(i,8,fftAbs_MIN[i])
+            
+            # Write to summary file
+            summaryWorksheet.write(i+1,0,time_Array[i])
+            summaryWorksheet.write(i+1,1,data_Array[i])
+            summaryWorksheet.write(i+1,2,fftFreq[i])
+            summaryWorksheet.write(i+1,3,fft_AVG[i].real)
+            summaryWorksheet.write(i+1,4,fft_AVG[i].imag)
+            summaryWorksheet.write(i+1,5,fftAbs_AVG[i])
+            summaryWorksheet.write(i+1,6,fft_MIN[i].real)
+            summaryWorksheet.write(i+1,7,fft_MIN[i].imag)
+            summaryWorksheet.write(i+1,8,fftAbs_MIN[i])
         
 
         workbook.close()
         iLoop = iLoop + 1
+
+# Close summary workbook
+summaryWorkbook.close()
 
 print('OK')
