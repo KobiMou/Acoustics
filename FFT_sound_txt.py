@@ -189,19 +189,24 @@ if chart_series_info:
             chart.add_series(series_config)
     
     # Configure chart with logarithmic frequency axis
-    chart.set_title({'name': 'FFT Frequency vs Minimum Absolute Values'})
+    chart.set_title({'name': 'FFT Frequency vs Minimum Absolute Values', 'name_font': {'size': 12}})
     chart.set_x_axis({
         'name': 'Frequency (Hz)',
         'log_base': 10,
-        'label_position': 'low'
+        'label_position': 'low',
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
     })
     chart.set_y_axis({
         'name': 'FFT Minimum Absolute Values',
         'label_position': 'low',
-        'name_layout': {'x': 0.02, 'y': 0.5}
+        'name_layout': {'x': 0.02, 'y': 0.5},
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
     })
     chart.set_size({'width': 1400, 'height': 700})
     chart.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+    chart.set_legend({'font': {'size': 12}})
     
     # Insert chart into worksheet
     plotWorksheet.insert_chart('A1', chart)
@@ -245,20 +250,25 @@ if chart_series_info:
             chartLog.add_series(series_config)
     
     # Configure chart with logarithmic scales for both axes
-    chartLog.set_title({'name': 'FFT Frequency vs Minimum Absolute Values (Log-Log Scale)'})
+    chartLog.set_title({'name': 'FFT Frequency vs Minimum Absolute Values (Log-Log Scale)', 'name_font': {'size': 12}})
     chartLog.set_x_axis({
         'name': 'Frequency (Hz)',
         'log_base': 10,
-        'label_position': 'low'
+        'label_position': 'low',
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
     })
     chartLog.set_y_axis({
         'name': 'FFT Minimum Absolute Values',
         'log_base': 10,
         'label_position': 'low',
-        'name_layout': {'x': 0.02, 'y': 0.5}
+        'name_layout': {'x': 0.02, 'y': 0.5},
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
     })
     chartLog.set_size({'width': 1400, 'height': 700})
     chartLog.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+    chartLog.set_legend({'font': {'size': 12}})
     
     # Insert chart into worksheet
     plotLogWorksheet.insert_chart('A1', chartLog)
