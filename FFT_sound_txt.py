@@ -6,7 +6,7 @@ import scipy.fftpack
 import matplotlib.pyplot as plt
 import re
 
-path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_07_07_2025_main\Edit_data'
+path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_07_07_2025_main\Edit_data\test_5ch_txt'
 
 files = os.listdir(path)
 
