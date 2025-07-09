@@ -1,0 +1,97 @@
+import os
+import numpy as np
+import pandas as pd
+import xlsxwriter
+import scipy.fftpack
+import matplotlib.pyplot as plt
+
+path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_07_07_2025_main\Edit_data'
+
+files = os.listdir(path)
+
+ListFileNames = []
+ListDataFrames = []
+
+n_samples = 65536   # 2^n  -> 65536
+n_AVG = 4
+downsample = 2  # take every "downsample" row, reduces fs -> lower Fnyq/2 but longer time -> better freq res
+
+for f in files:
+    fSplit = f.split('.')
+    fName = fSplit[0]
+    if ' ' in fName: fName = fName.replace(' ', '_')
+    ListFileNames.append(fName)
+    fullpath = os.path.join(path, f)
+    skipRows = 1 # skip only header: 1, skip header and first data row: 2
+    DataFrame = pd.read_csv(fullpath, header=None, skiprows=skipRows, delimiter='\s+')
+    ListDataFrames.append(DataFrame)
+
+iLoop = 0
+
+for DataFrame in ListDataFrames:
+    DataFrameSize = len(DataFrame)
+    
+    # Downsample
+    if downsample > 1:
+        DataFrame = DataFrame.iloc[::downsample]
+    
+    if n_AVG <= DataFrameSize//n_samples:
+        time_Array = DataFrame[0][0:n_samples].to_numpy()
+        
+        listSampleRate = []
+        Array_list = []
+        fft = []
+        fftAbs = []
+        
+        N = len(time_Array)
+        SampleRateArray = None
+        
+        for i in range(1, N):
+            sampleRate = time_Array[i] - time_Array[i-1]
+            listSampleRate.append(sampleRate)
+
+        st = sum(listSampleRate) / len(listSampleRate)
+        st = round(st, 9)
+        fs = 1 / st        
+        
+        fftFreq = np.fft.fftfreq(N, st)
+        
+        for j in range(n_AVG):
+            data_Array = DataFrame[1][j*n_samples:(j+1)*n_samples].to_numpy()
+            data_Array = np.transpose(data_Array)
+
+            Array_list.append(data_Array)
+
+            
+            #fftFreq = scipy.fftpack.fftfreq(N, st)
+            fft.append(np.fft.fft(data_Array))
+            #fft = scipy.fftpack.fft(Array[1])
+            fftAbs = np.abs(fft)/N*2 # Normalize result for correct amplitude
+        
+        fft_AVG = np.mean(fft, axis=0)  
+        fftAbs_AVG = np.mean(fftAbs, axis=0)    
+        fft_MIN = np.min(fft, axis=0)  
+        fftAbs_MIN = np.min(fftAbs, axis=0)      
+
+
+        workbookName = ListFileNames[iLoop] + '_Output' + '.xlsx'
+        workbook = xlsxwriter.Workbook(workbookName)
+        worksheet = workbook.add_worksheet()
+        worksheet.name = 'Data'
+
+        for i in range(N//2): # //2 for only positive side plotting 
+            worksheet.write(i,0,time_Array[i])
+            worksheet.write(i,1,data_Array[i])
+            worksheet.write(i,2,fftFreq[i])
+            worksheet.write(i,3,fft_AVG[i].real)
+            worksheet.write(i,4,fft_AVG[i].imag)
+            worksheet.write(i,5,fftAbs_AVG[i])
+            worksheet.write(i,6,fft_MIN[i].real)
+            worksheet.write(i,7,fft_MIN[i].imag)
+            worksheet.write(i,8,fftAbs_MIN[i])
+        
+
+        workbook.close()
+        iLoop = iLoop + 1
+
+print('OK')
