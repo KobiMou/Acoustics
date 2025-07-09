@@ -185,6 +185,50 @@ if chart_series_info:
     # Insert chart into worksheet
     plotWorksheet.insert_chart('A1', chart)
 
+    # Create second plot worksheet with logarithmic Y-axis
+    plotLogWorksheet = summaryWorkbook.add_worksheet('Plot_Log_Scale')
+    
+    # Create scatter chart with straight lines (same as first plot)
+    chartLog = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
+    
+    # Reset grey index for second chart
+    grey_index = 0
+    
+    # Add series for each file, referencing data from their respective tabs
+    for series_info in chart_series_info:
+        series_config = {
+            'name': series_info['filename'],
+            'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+            'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
+            'line': {'width': 2},
+            'marker': {'type': 'circle', 'size': 3}
+        }
+        
+        # Check if filename contains "NoLeak" and apply grey color
+        if 'NoLeak' in series_info['filename']:
+            grey_color = grey_colors[grey_index % len(grey_colors)]
+            series_config['line']['color'] = grey_color
+            series_config['marker']['border'] = {'color': grey_color}
+            series_config['marker']['fill'] = {'color': grey_color}
+            grey_index += 1
+        
+        chartLog.add_series(series_config)
+    
+    # Configure chart with logarithmic scales for both axes
+    chartLog.set_title({'name': 'FFT Frequency vs Minimum Absolute Values (Log-Log Scale)'})
+    chartLog.set_x_axis({
+        'name': 'Frequency (Hz)',
+        'log_base': 10
+    })
+    chartLog.set_y_axis({
+        'name': 'FFT Minimum Absolute Values',
+        'log_base': 10
+    })
+    chartLog.set_size({'width': 1200, 'height': 600})
+    
+    # Insert chart into worksheet
+    plotLogWorksheet.insert_chart('A1', chartLog)
+
 # Close summary workbook
 summaryWorkbook.close()
 
