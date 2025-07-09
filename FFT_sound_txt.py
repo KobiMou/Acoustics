@@ -149,8 +149,8 @@ if chart_series_info:
     # Create scatter chart with straight lines
     chart = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
     
-    # Define grey scale colors for NoLeak series (lighter and more distinguishable)
-    grey_colors = ['#606060', '#707070', '#808080', '#909090', '#A0A0A0', '#B0B0B0', '#C0C0C0', '#D0D0D0']
+    # Define grey scale colors for NoLeak series (bright and highly distinguishable)
+    grey_colors = ['#808080', '#959595', '#AAAAAA', '#BFBFBF', '#D4D4D4', '#E9E9E9', '#F0F0F0', '#F8F8F8']
     
     # Define highly distinguishable colors for regular series
     distinguishable_colors = ['#FF0000', '#0000FF', '#00FF00', '#FF8000', '#8000FF', '#FF0080', '#00FFFF', '#FFFF00', 
