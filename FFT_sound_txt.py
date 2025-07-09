@@ -151,7 +151,13 @@ if chart_series_info:
     
     # Define grey scale colors for NoLeak series
     grey_colors = ['#808080', '#666666', '#999999', '#555555', '#777777', '#444444', '#AAAAAA', '#333333']
+    
+    # Define highly distinguishable colors for regular series
+    distinguishable_colors = ['#FF0000', '#0000FF', '#00FF00', '#FF8000', '#8000FF', '#FF0080', '#00FFFF', '#FFFF00', 
+                             '#800000', '#000080', '#008000', '#804000', '#400080', '#800040', '#008080', '#808000']
+    
     grey_index = 0
+    color_index = 0
     
     # Add series for each file, referencing data from their respective tabs
     for series_info in chart_series_info:
@@ -170,6 +176,13 @@ if chart_series_info:
             series_config['marker']['border'] = {'color': grey_color}
             series_config['marker']['fill'] = {'color': grey_color}
             grey_index += 1
+        else:
+            # Apply distinguishable color for regular series
+            regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+            series_config['line']['color'] = regular_color
+            series_config['marker']['border'] = {'color': regular_color}
+            series_config['marker']['fill'] = {'color': regular_color}
+            color_index += 1
         
         chart.add_series(series_config)
     
@@ -191,8 +204,9 @@ if chart_series_info:
     # Create scatter chart with straight lines (same as first plot)
     chartLog = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
     
-    # Reset grey index for second chart
+    # Reset indices for second chart
     grey_index = 0
+    color_index = 0
     
     # Add series for each file, referencing data from their respective tabs
     for series_info in chart_series_info:
@@ -211,6 +225,13 @@ if chart_series_info:
             series_config['marker']['border'] = {'color': grey_color}
             series_config['marker']['fill'] = {'color': grey_color}
             grey_index += 1
+        else:
+            # Apply distinguishable color for regular series
+            regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+            series_config['line']['color'] = regular_color
+            series_config['marker']['border'] = {'color': regular_color}
+            series_config['marker']['fill'] = {'color': regular_color}
+            color_index += 1
         
         chartLog.add_series(series_config)
     
