@@ -4,6 +4,7 @@ import pandas as pd
 import xlsxwriter
 import scipy.fftpack
 import matplotlib.pyplot as plt
+import re
 
 path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_07_07_2025_main\Edit_data'
 
@@ -16,14 +17,28 @@ n_samples = 65536   # 2^n  -> 65536
 n_AVG = 4
 downsample = 2  # take every "downsample" row, reduces fs -> lower Fnyq/2 but longer time -> better freq res
 
+# Create list of tuples (filename, dataframe) for sorting
+file_data_pairs = []
+
 for f in files:
     fSplit = f.split('.')
     fName = fSplit[0]
     if ' ' in fName: fName = fName.replace(' ', '_')
-    ListFileNames.append(fName)
     fullpath = os.path.join(path, f)
     skipRows = 1 # skip only header: 1, skip header and first data row: 2
     DataFrame = pd.read_csv(fullpath, header=None, skiprows=skipRows, delimiter='\s+')
+    file_data_pairs.append((fName, DataFrame))
+
+# Sort by numeric value before "m"
+def extract_number_before_m(filename):
+    match = re.search(r'(\d+)m', filename)
+    return int(match.group(1)) if match else float('inf')
+
+file_data_pairs.sort(key=lambda x: extract_number_before_m(x[0]))
+
+# Extract sorted lists
+for fName, DataFrame in file_data_pairs:
+    ListFileNames.append(fName)
     ListDataFrames.append(DataFrame)
 
 # Create summary workbook
