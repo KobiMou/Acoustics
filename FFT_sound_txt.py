@@ -147,7 +147,7 @@ if chart_series_info:
     plotWorksheet = summaryWorkbook.add_worksheet('Plot')
     
     # Create scatter chart with straight lines
-    chart = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
+    chart = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
     
     # Define grey scale colors for NoLeak series
     grey_colors = ['#808080', '#666666', '#999999', '#555555', '#777777', '#444444', '#AAAAAA', '#333333']
@@ -165,23 +165,18 @@ if chart_series_info:
             'name': series_info['filename'],
             'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
             'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
-            'line': {'width': 2},
-            'marker': {'type': 'circle', 'size': 3}
+            'line': {'width': 2}
         }
         
         # Check if filename contains "NoLeak" and apply grey color
         if 'NoLeak' in series_info['filename']:
             grey_color = grey_colors[grey_index % len(grey_colors)]
             series_config['line']['color'] = grey_color
-            series_config['marker']['border'] = {'color': grey_color}
-            series_config['marker']['fill'] = {'color': grey_color}
             grey_index += 1
         else:
             # Apply distinguishable color for regular series
             regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
             series_config['line']['color'] = regular_color
-            series_config['marker']['border'] = {'color': regular_color}
-            series_config['marker']['fill'] = {'color': regular_color}
             color_index += 1
         
         chart.add_series(series_config)
@@ -202,7 +197,7 @@ if chart_series_info:
     plotLogWorksheet = summaryWorkbook.add_worksheet('Plot_Log_Scale')
     
     # Create scatter chart with straight lines (same as first plot)
-    chartLog = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
+    chartLog = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
     
     # Reset indices for second chart
     grey_index = 0
@@ -214,23 +209,18 @@ if chart_series_info:
             'name': series_info['filename'],
             'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
             'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
-            'line': {'width': 2},
-            'marker': {'type': 'circle', 'size': 3}
+            'line': {'width': 2}
         }
         
         # Check if filename contains "NoLeak" and apply grey color
         if 'NoLeak' in series_info['filename']:
             grey_color = grey_colors[grey_index % len(grey_colors)]
             series_config['line']['color'] = grey_color
-            series_config['marker']['border'] = {'color': grey_color}
-            series_config['marker']['fill'] = {'color': grey_color}
             grey_index += 1
         else:
             # Apply distinguishable color for regular series
             regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
             series_config['line']['color'] = regular_color
-            series_config['marker']['border'] = {'color': regular_color}
-            series_config['marker']['fill'] = {'color': regular_color}
             color_index += 1
         
         chartLog.add_series(series_config)
