@@ -44,8 +44,8 @@ for fName, DataFrame in file_data_pairs:
 # Create summary workbook
 summaryWorkbook = xlsxwriter.Workbook('summary.xlsx')
 
-# Store plot data for all files
-plot_data = []
+# Store chart series info
+chart_series_info = []
 
 iLoop = 0
 
@@ -94,11 +94,11 @@ for DataFrame in ListDataFrames:
         fft_MIN = np.min(fft, axis=0)  
         fftAbs_MIN = np.min(fftAbs, axis=0)      
 
-        # Store plot data for this file
-        plot_data.append({
+        # Store chart series info for this file
+        chart_series_info.append({
             'filename': ListFileNames[iLoop],
-            'fftFreq': fftFreq[:N//2],
-            'fftAbs_MIN': fftAbs_MIN[:N//2]
+            'sheet_name': ListFileNames[iLoop],
+            'data_points': N//2
         })
 
         # Create individual workbook for each file
@@ -143,47 +143,33 @@ for DataFrame in ListDataFrames:
         iLoop = iLoop + 1
 
 # Create plot worksheet
-if plot_data:
+if chart_series_info:
     plotWorksheet = summaryWorkbook.add_worksheet('Plot')
     
-    # Write headers
-    header_row = ['Frequency']
-    for data in plot_data:
-        header_row.append(f"{data['filename']}_FFT_Min_Abs")
+    # Create scatter chart with straight lines
+    chart = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight_with_markers'})
     
-    for col, header in enumerate(header_row):
-        plotWorksheet.write(0, col, header)
-    
-    # Write frequency data (using first file's frequency array as reference)
-    freq_data = plot_data[0]['fftFreq']
-    for row, freq in enumerate(freq_data):
-        plotWorksheet.write(row + 1, 0, freq)
-    
-    # Write FFT minimum absolute values for each file
-    for col, data in enumerate(plot_data):
-        for row, value in enumerate(data['fftAbs_MIN']):
-            plotWorksheet.write(row + 1, col + 1, value)
-    
-    # Create chart
-    chart = summaryWorkbook.add_chart({'type': 'line'})
-    
-    # Add series for each file
-    for col, data in enumerate(plot_data):
+    # Add series for each file, referencing data from their respective tabs
+    for series_info in chart_series_info:
         chart.add_series({
-            'name': data['filename'],
-            'categories': ['Plot', 1, 0, len(freq_data), 0],
-            'values': ['Plot', 1, col + 1, len(freq_data), col + 1],
-            'line': {'width': 2}
+            'name': series_info['filename'],
+            'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+            'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
+            'line': {'width': 2},
+            'marker': {'type': 'circle', 'size': 3}
         })
     
-    # Configure chart
+    # Configure chart with logarithmic frequency axis
     chart.set_title({'name': 'FFT Frequency vs Minimum Absolute Values'})
-    chart.set_x_axis({'name': 'Frequency (Hz)'})
+    chart.set_x_axis({
+        'name': 'Frequency (Hz)',
+        'log_base': 10
+    })
     chart.set_y_axis({'name': 'FFT Minimum Absolute Values'})
     chart.set_size({'width': 1200, 'height': 600})
     
     # Insert chart into worksheet
-    plotWorksheet.insert_chart('A' + str(len(freq_data) + 5), chart)
+    plotWorksheet.insert_chart('A1', chart)
 
 # Close summary workbook
 summaryWorkbook.close()
