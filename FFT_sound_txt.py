@@ -243,13 +243,11 @@ if chart_series_info:
     chartLog.set_x_axis({
         'name': 'Frequency (Hz)',
         'log_base': 10,
-        'position': 'bottom',
-        'crossing': 'min'
+        'label_position': 'low'
     })
     chartLog.set_y_axis({
         'name': 'FFT Minimum Absolute Values',
-        'log_base': 10,
-        'crossing': 'min'
+        'log_base': 10
     })
     chartLog.set_size({'width': 1200, 'height': 600})
     
