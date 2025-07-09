@@ -242,7 +242,8 @@ if chart_series_info:
     chartLog.set_title({'name': 'FFT Frequency vs Minimum Absolute Values (Log-Log Scale)'})
     chartLog.set_x_axis({
         'name': 'Frequency (Hz)',
-        'log_base': 10
+        'log_base': 10,
+        'position': 'bottom'
     })
     chartLog.set_y_axis({
         'name': 'FFT Minimum Absolute Values',
