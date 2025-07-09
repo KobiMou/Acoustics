@@ -102,10 +102,10 @@ for DataFrame in ListDataFrames:
         })
 
         # Create individual workbook for each file
-        workbookName = ListFileNames[iLoop] + '_Output' + '.xlsx'
-        workbook = xlsxwriter.Workbook(workbookName)
-        worksheet = workbook.add_worksheet()
-        worksheet.name = 'Data'
+        # workbookName = ListFileNames[iLoop] + '_Output' + '.xlsx'
+        # workbook = xlsxwriter.Workbook(workbookName)
+        # worksheet = workbook.add_worksheet()
+        # worksheet.name = 'Data'
 
         # Create worksheet in summary workbook for this file
         summaryWorksheet = summaryWorkbook.add_worksheet(ListFileNames[iLoop])
@@ -117,15 +117,15 @@ for DataFrame in ListDataFrames:
 
         for i in range(N//2): # //2 for only positive side plotting 
             # Write to individual file
-            worksheet.write(i,0,time_Array[i])
-            worksheet.write(i,1,data_Array[i])
-            worksheet.write(i,2,fftFreq[i])
-            worksheet.write(i,3,fft_AVG[i].real)
-            worksheet.write(i,4,fft_AVG[i].imag)
-            worksheet.write(i,5,fftAbs_AVG[i])
-            worksheet.write(i,6,fft_MIN[i].real)
-            worksheet.write(i,7,fft_MIN[i].imag)
-            worksheet.write(i,8,fftAbs_MIN[i])
+            # worksheet.write(i,0,time_Array[i])
+            # worksheet.write(i,1,data_Array[i])
+            # worksheet.write(i,2,fftFreq[i])
+            # worksheet.write(i,3,fft_AVG[i].real)
+            # worksheet.write(i,4,fft_AVG[i].imag)
+            # worksheet.write(i,5,fftAbs_AVG[i])
+            # worksheet.write(i,6,fft_MIN[i].real)
+            # worksheet.write(i,7,fft_MIN[i].imag)
+            # worksheet.write(i,8,fftAbs_MIN[i])
             
             # Write to summary file
             summaryWorksheet.write(i+1,0,time_Array[i])
@@ -139,7 +139,7 @@ for DataFrame in ListDataFrames:
             summaryWorksheet.write(i+1,8,fftAbs_MIN[i])
         
 
-        workbook.close()
+        # workbook.close()
         iLoop = iLoop + 1
 
 # Create plot worksheet
