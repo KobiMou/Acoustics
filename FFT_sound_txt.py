@@ -247,7 +247,8 @@ if chart_series_info:
     })
     chartLog.set_y_axis({
         'name': 'FFT Minimum Absolute Values',
-        'log_base': 10
+        'log_base': 10,
+        'label_position': 'low'
     })
     chartLog.set_size({'width': 1200, 'height': 600})
     
