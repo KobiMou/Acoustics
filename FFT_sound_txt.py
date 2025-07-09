@@ -197,7 +197,8 @@ if chart_series_info:
     })
     chart.set_y_axis({
         'name': 'FFT Minimum Absolute Values',
-        'label_position': 'low'
+        'label_position': 'low',
+        'name_layout': {'x': 0.02, 'y': 0.5}
     })
     chart.set_size({'width': 1400, 'height': 700})
     chart.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
@@ -253,7 +254,8 @@ if chart_series_info:
     chartLog.set_y_axis({
         'name': 'FFT Minimum Absolute Values',
         'log_base': 10,
-        'label_position': 'low'
+        'label_position': 'low',
+        'name_layout': {'x': 0.02, 'y': 0.5}
     })
     chartLog.set_size({'width': 1400, 'height': 700})
     chartLog.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
