@@ -192,10 +192,15 @@ if chart_series_info:
     chart.set_title({'name': 'FFT Frequency vs Minimum Absolute Values'})
     chart.set_x_axis({
         'name': 'Frequency (Hz)',
-        'log_base': 10
+        'log_base': 10,
+        'label_position': 'low'
     })
-    chart.set_y_axis({'name': 'FFT Minimum Absolute Values'})
-    chart.set_size({'width': 1200, 'height': 600})
+    chart.set_y_axis({
+        'name': 'FFT Minimum Absolute Values',
+        'label_position': 'low'
+    })
+    chart.set_size({'width': 1400, 'height': 700})
+    chart.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
     
     # Insert chart into worksheet
     plotWorksheet.insert_chart('A1', chart)
@@ -250,7 +255,8 @@ if chart_series_info:
         'log_base': 10,
         'label_position': 'low'
     })
-    chartLog.set_size({'width': 1200, 'height': 600})
+    chartLog.set_size({'width': 1400, 'height': 700})
+    chartLog.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
     
     # Insert chart into worksheet
     plotLogWorksheet.insert_chart('A1', chartLog)
