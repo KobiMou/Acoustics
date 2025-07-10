@@ -15,7 +15,7 @@ ListDataFrames = []
 
 n_samples = 65536   # 2^n  -> 65536
 n_AVG = 7
-downsample = 2  # take every "downsample" row, reduces fs -> lower Fnyq/2 but longer time -> better freq res
+downsample = 1  # Use all data - no downsampling for better leak detection
 
 # Create list of tuples (filename, dataframe) for sorting
 file_data_pairs = []
