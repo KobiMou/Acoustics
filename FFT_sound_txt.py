@@ -14,7 +14,7 @@ ListFileNames = []
 ListDataFrames = []
 
 n_samples = 65536   # 2^n  -> 65536
-n_AVG = 4
+n_AVG = 7
 downsample = 2  # take every "downsample" row, reduces fs -> lower Fnyq/2 but longer time -> better freq res
 
 # Create list of tuples (filename, dataframe) for sorting
@@ -77,27 +77,34 @@ for DataFrame in ListDataFrames:
         
         fftFreq = np.fft.fftfreq(N, st)
         
+        # Create Hanning window
+        hanning_window = np.hanning(N)
+        
         for j in range(n_AVG):
             data_Array = DataFrame[1][j*n_samples:(j+1)*n_samples].to_numpy()
             data_Array = np.transpose(data_Array)
 
             Array_list.append(data_Array)
 
+            # Apply Hanning window to reduce spectral leakage
+            windowed_data = data_Array * hanning_window
             
             #fftFreq = scipy.fftpack.fftfreq(N, st)
-            fft.append(np.fft.fft(data_Array))
+            fft.append(np.fft.fft(windowed_data))
             #fft = scipy.fftpack.fft(Array[1])
-            fftAbs = np.abs(fft)/N*2 # Normalize result for correct amplitude
+            fftAbs = np.abs(fft)/N*2*2 # Normalize result for correct amplitude (×2 for Hanning window compensation)
         
         fft_AVG = np.mean(fft, axis=0)  
         fftAbs_AVG = np.mean(fftAbs, axis=0)    
         fft_MIN = np.min(fft, axis=0)  
         fftAbs_MIN = np.min(fftAbs, axis=0)
         
-        # Calculate PSD (Power Spectral Density)
+        # Calculate PSD (Power Spectral Density) - already using windowed FFT results
+        # Hanning window correction factor for PSD (compensate for power loss)
+        hanning_correction = 8/3  # Correction factor for Hanning window power
         psd = []
         for j in range(n_AVG):
-            psd_single = (np.abs(fft[j])**2) / (N * fs)
+            psd_single = (np.abs(fft[j])**2) / (N * fs) * hanning_correction
             psd.append(psd_single)
         
         psd_AVG = np.mean(psd, axis=0)
