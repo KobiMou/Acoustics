@@ -13,7 +13,7 @@ files = os.listdir(path)
 ListFileNames = []
 ListDataFrames = []
 
-n_samples = 65536   # 2^n  -> 65536
+n_samples = 131072  # 2^n  -> 131072 (2^17)
 n_AVG = 7
 downsample = 1  # Use all data - no downsampling for better leak detection
 
