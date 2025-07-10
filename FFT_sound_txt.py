@@ -15,7 +15,6 @@ ListDataFrames = []
 
 n_samples = 131072  # 2^n  -> 131072 (2^17)
 n_AVG = 7
-downsample = 1  # Use all data - no downsampling for better leak detection
 
 # Create list of tuples (filename, dataframe) for sorting
 file_data_pairs = []
@@ -51,10 +50,6 @@ iLoop = 0
 
 for DataFrame in ListDataFrames:
     DataFrameSize = len(DataFrame)
-    
-    # Downsample
-    if downsample > 1:
-        DataFrame = DataFrame.iloc[::downsample]
     
     if n_AVG <= DataFrameSize//n_samples:
         time_Array = DataFrame[0][0:n_samples].to_numpy()
