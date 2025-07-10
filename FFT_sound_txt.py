@@ -196,9 +196,20 @@ def detect_leak_frequency_bands(freq, leak_psd, noleak_baseline):
         (70, 80),      # Low acoustic range
         (80, 90),      # Pre-acoustic range
         (90, 100),     # Low acoustic transition
-        # Original frequency bands
-        (100, 500),    # Low frequency structural vibrations
-        (500, 2000),   # Mid frequency acoustic emissions  
+        # Refined frequency bands
+        # 100-500 Hz range in 50 Hz increments
+        (100, 150),    # Low structural range 1
+        (150, 200),    # Low structural range 2
+        (200, 250),    # Low structural range 3
+        (250, 300),    # Low structural range 4
+        (300, 350),    # Low structural range 5
+        (350, 400),    # Low structural range 6
+        (400, 450),    # Low structural range 7
+        (450, 500),    # Low structural range 8
+        # 500-2000 Hz range in 1000 Hz jumps
+        (500, 1500),   # Mid frequency acoustic emissions 1
+        (1500, 2000),  # Mid frequency acoustic emissions 2
+        # Original higher frequency bands
         (2000, 8000),  # High frequency turbulence
         (8000, 20000)  # Ultrasonic range
     ]
