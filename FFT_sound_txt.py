@@ -314,6 +314,61 @@ def analyze_leak_detection(analysis_data):
 # Perform leak detection analysis
 leak_detection_results = analyze_leak_detection(analysis_data)
 
+def analyze_leak_detection_distance_specific(analysis_data):
+    """Analyze leak detection using distance-specific noise floors"""
+    
+    # Group data by distance
+    distance_groups = {}
+    
+    for data in analysis_data:
+        # Extract distance from filename
+        match = re.search(r'(\d+)m', data['filename'])
+        if match:
+            distance = int(match.group(1))
+            if distance not in distance_groups:
+                distance_groups[distance] = {'noleak': [], 'potential_leaks': []}
+            
+            if data['is_noleak']:
+                distance_groups[distance]['noleak'].append(data)
+            else:
+                distance_groups[distance]['potential_leaks'].append(data)
+    
+    # Analyze each distance group
+    results = {}
+    
+    for distance, group in distance_groups.items():
+        if not group['noleak']:
+            # No NoLeak baseline for this distance
+            for leak_data in group['potential_leaks']:
+                results[leak_data['filename']] = {
+                    'error': f'No NoLeak baseline available for {distance}m distance',
+                    'distance': distance,
+                    'baseline_available': False
+                }
+            continue
+        
+        # Create distance-specific baseline
+        noleak_baseline = np.vstack([data['psd_avg'] for data in group['noleak']])
+        
+        # Analyze potential leaks at this distance
+        for leak_data in group['potential_leaks']:
+            detection_result = calculate_leak_detection_score(
+                leak_data['frequency'], leak_data['psd_avg'], noleak_baseline
+            )
+            
+            # Add distance-specific information
+            detection_result['distance'] = distance
+            detection_result['baseline_measurements'] = len(group['noleak'])
+            detection_result['baseline_files'] = [data['filename'] for data in group['noleak']]
+            detection_result['baseline_available'] = True
+            
+            results[leak_data['filename']] = detection_result
+    
+    return results
+
+# Perform distance-specific leak detection analysis
+leak_detection_distance_specific = analyze_leak_detection_distance_specific(analysis_data)
+
 # Create plot worksheet
 if chart_series_info:
     plotWorksheet = summaryWorkbook.add_worksheet('Plot')
@@ -572,11 +627,117 @@ if chart_series_info:
         leakDetectionWorksheet.write(row, 1, low_prob)
         row += 1
         
-        # Average scores
+                 # Average scores
         if leak_detection_results:
             avg_composite = np.mean([r['composite_score'] for r in leak_detection_results.values()])
             leakDetectionWorksheet.write(row, 0, 'Average Composite Score:')
             leakDetectionWorksheet.write(row, 1, round(avg_composite, 1))
+
+    # Create Distance-Specific Leak Detection Results worksheet
+    if leak_detection_distance_specific and isinstance(leak_detection_distance_specific, dict):
+        distanceDetectionWorksheet = summaryWorkbook.add_worksheet('Distance_Specific_Detection')
+        
+        # Write headers
+        headers = ['Measurement', 'Distance (m)', 'Baseline Available', 'Baseline Count', 'Baseline Files', 
+                  'Leak Probability', 'Composite Score', 'Statistical Score', 'Frequency Band Score', 
+                  'Power Ratio Score', 'Max Power Increase (dB)', 'Detection Ratio (%)', 'Max Exceedance Ratio']
+        
+        for col, header in enumerate(headers):
+            distanceDetectionWorksheet.write(0, col, header)
+        
+        # Write detection results
+        row = 1
+        for filename, result in leak_detection_distance_specific.items():
+            distanceDetectionWorksheet.write(row, 0, filename)
+            distanceDetectionWorksheet.write(row, 1, result['distance'])
+            
+            if not result.get('baseline_available', True):
+                # Handle case where no baseline is available
+                distanceDetectionWorksheet.write(row, 2, 'NO')
+                distanceDetectionWorksheet.write(row, 3, 0)
+                distanceDetectionWorksheet.write(row, 4, 'N/A')
+                distanceDetectionWorksheet.write(row, 5, result.get('error', 'No baseline'))
+                for col in range(6, len(headers)):
+                    distanceDetectionWorksheet.write(row, col, 'N/A')
+            else:
+                # Normal case with baseline available
+                distanceDetectionWorksheet.write(row, 2, 'YES')
+                distanceDetectionWorksheet.write(row, 3, result['baseline_measurements'])
+                distanceDetectionWorksheet.write(row, 4, ', '.join(result['baseline_files']))
+                distanceDetectionWorksheet.write(row, 5, result['leak_probability'])
+                distanceDetectionWorksheet.write(row, 6, round(result['composite_score'], 1))
+                distanceDetectionWorksheet.write(row, 7, round(result['individual_scores']['statistical'], 1))
+                distanceDetectionWorksheet.write(row, 8, round(result['individual_scores']['frequency_bands'], 1))
+                distanceDetectionWorksheet.write(row, 9, round(result['individual_scores']['power_ratio'], 1))
+                distanceDetectionWorksheet.write(row, 10, round(result['detailed_results']['power_ratio']['max_power_increase_dB'], 1))
+                distanceDetectionWorksheet.write(row, 11, round(result['detailed_results']['statistical']['detection_ratio'] * 100, 1))
+                distanceDetectionWorksheet.write(row, 12, round(result['detailed_results']['statistical']['max_exceedance_ratio'], 2))
+            
+            row += 1
+        
+        # Add distance-specific frequency band analysis details
+        row += 2
+        distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Frequency Band Analysis:')
+        row += 1
+        
+        # Headers for frequency band details
+        band_headers = ['Measurement', 'Distance (m)', 'Frequency Band', 'SNR Ratio', 'Z-Score', 'Leak Detected']
+        for col, header in enumerate(band_headers):
+            distanceDetectionWorksheet.write(row, col, header)
+        row += 1
+        
+        # Write frequency band details
+        for filename, result in leak_detection_distance_specific.items():
+            if result.get('baseline_available', True) and 'detailed_results' in result:
+                for band_name, band_result in result['detailed_results']['frequency_bands'].items():
+                    distanceDetectionWorksheet.write(row, 0, filename)
+                    distanceDetectionWorksheet.write(row, 1, result['distance'])
+                    distanceDetectionWorksheet.write(row, 2, band_name.replace('_', ' ').replace('band ', ''))
+                    distanceDetectionWorksheet.write(row, 3, round(band_result['snr_ratio'], 2))
+                    distanceDetectionWorksheet.write(row, 4, round(band_result['z_score'], 2))
+                    distanceDetectionWorksheet.write(row, 5, 'YES' if band_result['leak_detected'] else 'NO')
+                    row += 1
+        
+        # Add distance-specific summary statistics
+        row += 2
+        distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Detection Summary:')
+        row += 1
+        
+        # Group results by distance for summary
+        distance_summary = {}
+        for filename, result in leak_detection_distance_specific.items():
+            distance = result['distance']
+            if distance not in distance_summary:
+                distance_summary[distance] = {'high': 0, 'medium': 0, 'low': 0, 'no_baseline': 0, 'total': 0}
+            
+            distance_summary[distance]['total'] += 1
+            
+            if not result.get('baseline_available', True):
+                distance_summary[distance]['no_baseline'] += 1
+            else:
+                prob = result['leak_probability']
+                if prob == 'HIGH':
+                    distance_summary[distance]['high'] += 1
+                elif prob == 'MEDIUM':
+                    distance_summary[distance]['medium'] += 1
+                else:
+                    distance_summary[distance]['low'] += 1
+        
+        # Write summary by distance
+        summary_headers = ['Distance (m)', 'Total Measurements', 'High Prob', 'Medium Prob', 'Low Prob', 'No Baseline']
+        for col, header in enumerate(summary_headers):
+            distanceDetectionWorksheet.write(row, col, header)
+        row += 1
+        
+        for distance in sorted(distance_summary.keys()):
+            summary = distance_summary[distance]
+            distanceDetectionWorksheet.write(row, 0, distance)
+            distanceDetectionWorksheet.write(row, 1, summary['total'])
+            distanceDetectionWorksheet.write(row, 2, summary['high'])
+            distanceDetectionWorksheet.write(row, 3, summary['medium'])
+            distanceDetectionWorksheet.write(row, 4, summary['low'])
+            distanceDetectionWorksheet.write(row, 5, summary['no_baseline'])
+            row += 1
 
 # Close summary workbook
 summaryWorkbook.close()
