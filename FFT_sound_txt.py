@@ -108,6 +108,7 @@ for DataFrame in ListDataFrames:
         
         # Calculate SNR (will be updated after all files are processed)
         snr_dB = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
+        snr_distance_dB = np.zeros_like(psd_AVG)  # Placeholder for distance-specific SNR
 
         # Store chart series info for this file
         chart_series_info.append({
@@ -135,7 +136,7 @@ for DataFrame in ListDataFrames:
         summaryWorksheet = summaryWorkbook.add_worksheet(ListFileNames[iLoop])
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD_AVG', 'SNR_dB']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD_AVG', 'SNR_dB', 'SNR_Distance_dB']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
 
@@ -163,6 +164,7 @@ for DataFrame in ListDataFrames:
             summaryWorksheet.write(i+1,8,fftAbs_MIN[i])
             summaryWorksheet.write(i+1,9,psd_AVG[i])
             summaryWorksheet.write(i+1,10,snr_dB[i])
+            summaryWorksheet.write(i+1,11,snr_distance_dB[i])
         
 
         # workbook.close()
@@ -666,6 +668,111 @@ if chart_series_info:
     
     # Insert SNR chart into worksheet
     snrPlotWorksheet.insert_chart('A1', chartSNR)
+
+    # Create Distance-Specific SNR plot worksheet
+    snrDistanceWorksheet = summaryWorkbook.add_worksheet('SNR_Distance_Specific')
+    
+    # Calculate distance-specific SNR data
+    if analysis_data:
+        # Group data by distance
+        distance_groups = {}
+        
+        for data in analysis_data:
+            # Extract distance from filename
+            match = re.search(r'(\d+)m', data['filename'])
+            if match:
+                distance = int(match.group(1))
+                if distance not in distance_groups:
+                    distance_groups[distance] = {'noleak': [], 'all_measurements': []}
+                
+                distance_groups[distance]['all_measurements'].append(data)
+                if data['is_noleak']:
+                    distance_groups[distance]['noleak'].append(data)
+        
+        # Calculate distance-specific SNR for each group
+        for distance, group in distance_groups.items():
+            if group['noleak']:
+                # Create distance-specific noise floor
+                distance_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
+                distance_noise_floor = np.maximum(distance_noise_floor, np.finfo(float).eps)
+                
+                # Calculate SNR for all measurements at this distance
+                for data in group['all_measurements']:
+                    # Calculate distance-specific SNR in dB
+                    snr_distance_dB = 10 * np.log10(data['psd_avg'] / distance_noise_floor)
+                    
+                    # Update the worksheet with distance-specific SNR values
+                    sheet_name = data['filename']
+                    
+                    # Find and update the corresponding worksheet
+                    for ws in summaryWorkbook.worksheets():
+                        if ws.name == sheet_name:
+                            # Add distance-specific SNR header if not exists
+                            ws.write(0, 11, 'SNR_Distance_dB')
+                            
+                            # Update distance-specific SNR column (column L, index 11)
+                            for j in range(len(snr_distance_dB)):
+                                ws.write(j+1, 11, snr_distance_dB[j])
+                            break
+    
+    # Create scatter chart with straight lines for distance-specific SNR
+    chartSNRDist = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+    
+    # First add all non-NoLeak series (colorful lines in background)
+    color_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' not in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
+                'line': {'width': 2}
+            }
+            # Apply distinguishable color for regular series
+            regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+            series_config['line']['color'] = regular_color
+            color_index += 1
+            chartSNRDist.add_series(series_config)
+    
+    # Then add all NoLeak series as reference
+    grey_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' in series_info['filename']:
+            # Create SNR reference line for NoLeak measurements (should be around 0 dB for distance-specific)
+            series_config = {
+                'name': series_info['filename'] + ' (Distance Ref)',
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
+                'line': {'width': 1}
+            }
+            # Apply grey color
+            grey_color = grey_colors[grey_index % len(grey_colors)]
+            series_config['line']['color'] = grey_color
+            grey_index += 1
+            chartSNRDist.add_series(series_config)
+    
+    # Configure distance-specific SNR chart
+    chartSNRDist.set_title({'name': 'Distance-Specific Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
+    chartSNRDist.set_x_axis({
+        'name': 'Frequency (Hz)',
+        'log_base': 10,
+        'label_position': 'low',
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chartSNRDist.set_y_axis({
+        'name': 'SNR Distance-Specific (dB)',
+        'label_position': 'low',
+        'name_layout': {'x': 0.02, 'y': 0.5},
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chartSNRDist.set_size({'width': 1400, 'height': 700})
+    chartSNRDist.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+    chartSNRDist.set_legend({'font': {'size': 12}})
+    
+    # Insert distance-specific SNR chart into worksheet
+    snrDistanceWorksheet.insert_chart('A1', chartSNRDist)
 
     # Create Leak Detection Results worksheet
     if leak_detection_results and isinstance(leak_detection_results, dict):
