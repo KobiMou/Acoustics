@@ -92,7 +92,16 @@ for DataFrame in ListDataFrames:
         fft_AVG = np.mean(fft, axis=0)  
         fftAbs_AVG = np.mean(fftAbs, axis=0)    
         fft_MIN = np.min(fft, axis=0)  
-        fftAbs_MIN = np.min(fftAbs, axis=0)      
+        fftAbs_MIN = np.min(fftAbs, axis=0)
+        
+        # Calculate PSD (Power Spectral Density)
+        psd = []
+        for j in range(n_AVG):
+            psd_single = (np.abs(fft[j])**2) / (N * fs)
+            psd.append(psd_single)
+        
+        psd_AVG = np.mean(psd, axis=0)
+        psd_MIN = np.min(psd, axis=0)      
 
         # Store chart series info for this file
         chart_series_info.append({
@@ -111,7 +120,7 @@ for DataFrame in ListDataFrames:
         summaryWorksheet = summaryWorkbook.add_worksheet(ListFileNames[iLoop])
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD_AVG', 'PSD_MIN']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
 
@@ -137,6 +146,8 @@ for DataFrame in ListDataFrames:
             summaryWorksheet.write(i+1,6,fft_MIN[i].real)
             summaryWorksheet.write(i+1,7,fft_MIN[i].imag)
             summaryWorksheet.write(i+1,8,fftAbs_MIN[i])
+            summaryWorksheet.write(i+1,9,psd_AVG[i])
+            summaryWorksheet.write(i+1,10,psd_MIN[i])
         
 
         # workbook.close()
@@ -272,6 +283,67 @@ if chart_series_info:
     
     # Insert chart into worksheet
     plotLogWorksheet.insert_chart('A1', chartLog)
+
+    # Create PSD plot worksheet
+    psdPlotWorksheet = summaryWorkbook.add_worksheet('PSD_Plot')
+    
+    # Create scatter chart with straight lines for PSD
+    chartPSD = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+    
+    # First add all non-NoLeak series (colorful lines in background)
+    color_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' not in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # PSD_MIN column (column K)
+                'line': {'width': 2}
+            }
+            # Apply distinguishable color for regular series
+            regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+            series_config['line']['color'] = regular_color
+            color_index += 1
+            chartPSD.add_series(series_config)
+    
+    # Then add all NoLeak series (grey lines in front)
+    grey_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # PSD_MIN column (column K)
+                'line': {'width': 2}
+            }
+            # Apply grey color in ascending order (darker to lighter)
+            grey_color = grey_colors[grey_index % len(grey_colors)]
+            series_config['line']['color'] = grey_color
+            grey_index += 1
+            chartPSD.add_series(series_config)
+    
+    # Configure PSD chart with logarithmic frequency axis
+    chartPSD.set_title({'name': 'PSD Frequency vs Minimum Values', 'name_font': {'size': 12}})
+    chartPSD.set_x_axis({
+        'name': 'Frequency (Hz)',
+        'log_base': 10,
+        'label_position': 'low',
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chartPSD.set_y_axis({
+        'name': 'PSD Minimum Values',
+        'label_position': 'low',
+        'name_layout': {'x': 0.02, 'y': 0.5},
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chartPSD.set_size({'width': 1400, 'height': 700})
+    chartPSD.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+    chartPSD.set_legend({'font': {'size': 12}})
+    
+    # Insert PSD chart into worksheet
+    psdPlotWorksheet.insert_chart('A1', chartPSD)
 
 # Close summary workbook
 summaryWorkbook.close()
