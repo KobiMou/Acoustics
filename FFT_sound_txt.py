@@ -104,7 +104,10 @@ for DataFrame in ListDataFrames:
             psd_single = (np.abs(fft[j])**2) / (N * fs) * hanning_correction
             psd.append(psd_single)
         
-        psd_AVG = np.mean(psd, axis=0)      
+        psd_AVG = np.mean(psd, axis=0)
+        
+        # Calculate SNR (will be updated after all files are processed)
+        snr_dB = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
 
         # Store chart series info for this file
         chart_series_info.append({
@@ -132,7 +135,7 @@ for DataFrame in ListDataFrames:
         summaryWorksheet = summaryWorkbook.add_worksheet(ListFileNames[iLoop])
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD_AVG']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD_AVG', 'SNR_dB']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
 
@@ -159,6 +162,7 @@ for DataFrame in ListDataFrames:
             summaryWorksheet.write(i+1,7,fft_MIN[i].imag)
             summaryWorksheet.write(i+1,8,fftAbs_MIN[i])
             summaryWorksheet.write(i+1,9,psd_AVG[i])
+            summaryWorksheet.write(i+1,10,snr_dB[i])
         
 
         # workbook.close()
@@ -321,6 +325,35 @@ def analyze_leak_detection(analysis_data):
         results[filename] = detection_result
     
     return results
+
+# Calculate and update SNR values in worksheets
+if analysis_data:
+    # Calculate global noise floor from all NoLeak measurements
+    noleak_psd_data = []
+    for data in analysis_data:
+        if data['is_noleak']:
+            noleak_psd_data.append(data['psd_avg'])
+    
+    if noleak_psd_data:
+        # Create global noise floor baseline
+        noise_floor = np.mean(np.vstack(noleak_psd_data), axis=0)
+        noise_floor = np.maximum(noise_floor, np.finfo(float).eps)  # Avoid division by zero
+        
+        # Update SNR data for all measurements
+        for data in analysis_data:
+            # Calculate SNR in dB for all measurements (including NoLeak)
+            snr_dB = 10 * np.log10(data['psd_avg'] / noise_floor)
+            
+            # Update the worksheet with SNR values
+            sheet_name = data['filename']
+            
+            # Find and update the corresponding worksheet
+            for ws in summaryWorkbook.worksheets():
+                if ws.name == sheet_name:
+                    # Update SNR column (column K, index 10)
+                    for j in range(len(snr_dB)):
+                        ws.write(j+1, 10, snr_dB[j])
+                    break
 
 # Perform leak detection analysis
 leak_detection_results = analyze_leak_detection(analysis_data)
@@ -571,6 +604,68 @@ if chart_series_info:
     
     # Insert PSD chart into worksheet
     psdPlotWorksheet.insert_chart('A1', chartPSD)
+
+    # Create SNR plot worksheet
+    snrPlotWorksheet = summaryWorkbook.add_worksheet('SNR_Plot')
+    
+    # Create scatter chart with straight lines for SNR
+    chartSNR = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+    
+    # First add all non-NoLeak series (colorful lines in background)
+    color_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' not in series_info['filename']:
+            series_config = {
+                'name': series_info['filename'],
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
+                'line': {'width': 2}
+            }
+            # Apply distinguishable color for regular series
+            regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+            series_config['line']['color'] = regular_color
+            color_index += 1
+            chartSNR.add_series(series_config)
+    
+    # Then add all NoLeak series as reference (flat line at 0 dB)
+    grey_index = 0
+    for series_info in chart_series_info:
+        if 'NoLeak' in series_info['filename']:
+            # Create SNR reference line for NoLeak measurements
+            series_config = {
+                'name': series_info['filename'] + ' (Reference)',
+                'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
+                'line': {'width': 1}
+            }
+            # Apply grey color
+            grey_color = grey_colors[grey_index % len(grey_colors)]
+            series_config['line']['color'] = grey_color
+            grey_index += 1
+            chartSNR.add_series(series_config)
+    
+    # Configure SNR chart
+    chartSNR.set_title({'name': 'Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
+    chartSNR.set_x_axis({
+        'name': 'Frequency (Hz)',
+        'log_base': 10,
+        'label_position': 'low',
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chartSNR.set_y_axis({
+        'name': 'SNR (dB)',
+        'label_position': 'low',
+        'name_layout': {'x': 0.02, 'y': 0.5},
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chartSNR.set_size({'width': 1400, 'height': 700})
+    chartSNR.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+    chartSNR.set_legend({'font': {'size': 12}})
+    
+    # Insert SNR chart into worksheet
+    snrPlotWorksheet.insert_chart('A1', chartSNR)
 
     # Create Leak Detection Results worksheet
     if leak_detection_results and isinstance(leak_detection_results, dict):
