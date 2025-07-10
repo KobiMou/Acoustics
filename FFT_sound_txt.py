@@ -5,6 +5,7 @@ import xlsxwriter
 import scipy.fftpack
 import matplotlib.pyplot as plt
 import re
+from scipy import stats
 
 path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_07_07_2025_main\Edit_data\test_5ch_txt'
 
@@ -43,8 +44,9 @@ for fName, DataFrame in file_data_pairs:
 # Create summary workbook
 summaryWorkbook = xlsxwriter.Workbook('summary.xlsx')
 
-# Store chart series info
+# Store chart series info and analysis data
 chart_series_info = []
+analysis_data = []  # Store frequency and PSD data for leak detection
 
 iLoop = 0
 
@@ -110,6 +112,15 @@ for DataFrame in ListDataFrames:
             'sheet_name': ListFileNames[iLoop],
             'data_points': N//2
         })
+        
+        # Store analysis data for leak detection
+        analysis_data.append({
+            'filename': ListFileNames[iLoop],
+            'frequency': fftFreq[:N//2],
+            'psd_avg': psd_AVG[:N//2],
+            'fft_abs_min': fftAbs_MIN[:N//2],
+            'is_noleak': 'NoLeak' in ListFileNames[iLoop]
+        })
 
         # Create individual workbook for each file
         # workbookName = ListFileNames[iLoop] + '_Output' + '.xlsx'
@@ -152,6 +163,144 @@ for DataFrame in ListDataFrames:
 
         # workbook.close()
         iLoop = iLoop + 1
+
+# Leak Detection Functions
+def detect_leak_statistical(leak_psd, noleak_baseline, confidence_factor=3):
+    """Detect leaks using statistical thresholding"""
+    noise_mean = np.mean(noleak_baseline, axis=0)
+    noise_std = np.std(noleak_baseline, axis=0)
+    detection_threshold = noise_mean + confidence_factor * noise_std
+    leak_detection = leak_psd > detection_threshold
+    detection_ratio = np.sum(leak_detection) / len(leak_detection)
+    max_exceedance = np.max(leak_psd / np.maximum(detection_threshold, np.finfo(float).eps))
+    
+    return {
+        'leak_detected': np.any(leak_detection),
+        'detection_mask': leak_detection,
+        'detection_ratio': detection_ratio,
+        'max_exceedance_ratio': max_exceedance,
+        'threshold': detection_threshold
+    }
+
+def detect_leak_frequency_bands(freq, leak_psd, noleak_baseline):
+    """Analyze specific frequency bands where leaks typically occur"""
+    leak_bands = [
+        (100, 500),    # Low frequency structural vibrations
+        (500, 2000),   # Mid frequency acoustic emissions  
+        (2000, 8000),  # High frequency turbulence
+        (8000, 20000)  # Ultrasonic range
+    ]
+    
+    results = {}
+    
+    for i, (f_low, f_high) in enumerate(leak_bands):
+        band_mask = (freq >= f_low) & (freq <= f_high)
+        
+        if np.any(band_mask):
+            leak_band = leak_psd[band_mask]
+            baseline_band = noleak_baseline[:, band_mask]
+            
+            baseline_mean = np.mean(baseline_band)
+            baseline_std = np.std(baseline_band)
+            leak_mean = np.mean(leak_band)
+            
+            snr_ratio = leak_mean / np.maximum(baseline_mean, np.finfo(float).eps)
+            z_score = (leak_mean - baseline_mean) / np.maximum(baseline_std, np.finfo(float).eps)
+            
+            results[f'band_{f_low}_{f_high}Hz'] = {
+                'snr_ratio': snr_ratio,
+                'z_score': z_score,
+                'leak_detected': z_score > 3,
+                'frequency_range': (f_low, f_high)
+            }
+    
+    return results
+
+def detect_leak_power_ratio(leak_psd, noleak_baseline, threshold_dB=8):
+    """Detect based on power ratio in dB"""
+    baseline_power = np.mean(noleak_baseline, axis=0)
+    baseline_power = np.maximum(baseline_power, np.finfo(float).eps)
+    
+    power_ratio_dB = 10 * np.log10(leak_psd / baseline_power)
+    leak_detected = power_ratio_dB > threshold_dB
+    
+    return {
+        'power_ratio_dB': power_ratio_dB,
+        'leak_detected': np.any(leak_detected),
+        'detection_mask': leak_detected,
+        'max_power_increase_dB': np.max(power_ratio_dB),
+        'mean_power_increase_dB': np.mean(power_ratio_dB)
+    }
+
+def calculate_leak_detection_score(freq, leak_psd, noleak_baseline):
+    """Comprehensive leak detection scoring"""
+    stat_result = detect_leak_statistical(leak_psd, noleak_baseline, confidence_factor=3)
+    band_result = detect_leak_frequency_bands(freq, leak_psd, noleak_baseline)
+    power_result = detect_leak_power_ratio(leak_psd, noleak_baseline, threshold_dB=8)
+    
+    # Calculate composite score
+    scores = []
+    
+    # Statistical score (0-100)
+    stat_score = min(100, stat_result['detection_ratio'] * 100 + stat_result['max_exceedance_ratio'] * 20)
+    scores.append(stat_score)
+    
+    # Frequency band score
+    band_detections = sum(1 for band in band_result.values() if band['leak_detected'])
+    band_score = (band_detections / max(1, len(band_result))) * 100
+    scores.append(band_score)
+    
+    # Power ratio score
+    power_score = min(100, max(0, power_result['max_power_increase_dB'] - 5) * 10)
+    scores.append(power_score)
+    
+    # Weighted composite score
+    composite_score = np.average(scores, weights=[0.4, 0.4, 0.2])
+    
+    return {
+        'composite_score': composite_score,
+        'leak_probability': 'HIGH' if composite_score > 70 else 'MEDIUM' if composite_score > 40 else 'LOW',
+        'individual_scores': {
+            'statistical': stat_score,
+            'frequency_bands': band_score, 
+            'power_ratio': power_score
+        },
+        'detailed_results': {
+            'statistical': stat_result,
+            'frequency_bands': band_result,
+            'power_ratio': power_result
+        }
+    }
+
+def analyze_leak_detection(analysis_data):
+    """Analyze all measurements for leak detection"""
+    # Separate NoLeak and potential leak data
+    noleak_data = []
+    leak_data = []
+    
+    for data in analysis_data:
+        if data['is_noleak']:
+            noleak_data.append(data['psd_avg'])
+        else:
+            leak_data.append((data['filename'], data['psd_avg'], data['frequency']))
+    
+    if not noleak_data:
+        return "No NoLeak baseline data found"
+    
+    # Stack NoLeak data for baseline
+    noleak_baseline = np.vstack(noleak_data)
+    
+    # Analyze each potential leak measurement
+    results = {}
+    
+    for filename, leak_psd, frequency in leak_data:
+        detection_result = calculate_leak_detection_score(frequency, leak_psd, noleak_baseline)
+        results[filename] = detection_result
+    
+    return results
+
+# Perform leak detection analysis
+leak_detection_results = analyze_leak_detection(analysis_data)
 
 # Create plot worksheet
 if chart_series_info:
@@ -344,6 +493,78 @@ if chart_series_info:
     
     # Insert PSD chart into worksheet
     psdPlotWorksheet.insert_chart('A1', chartPSD)
+
+    # Create Leak Detection Results worksheet
+    if leak_detection_results and isinstance(leak_detection_results, dict):
+        leakDetectionWorksheet = summaryWorkbook.add_worksheet('Leak_Detection')
+        
+        # Write headers
+        headers = ['Measurement', 'Leak Probability', 'Composite Score', 'Statistical Score', 'Frequency Band Score', 
+                  'Power Ratio Score', 'Max Power Increase (dB)', 'Detection Ratio (%)', 'Max Exceedance Ratio']
+        
+        for col, header in enumerate(headers):
+            leakDetectionWorksheet.write(0, col, header)
+        
+        # Write detection results
+        row = 1
+        for filename, result in leak_detection_results.items():
+            leakDetectionWorksheet.write(row, 0, filename)
+            leakDetectionWorksheet.write(row, 1, result['leak_probability'])
+            leakDetectionWorksheet.write(row, 2, round(result['composite_score'], 1))
+            leakDetectionWorksheet.write(row, 3, round(result['individual_scores']['statistical'], 1))
+            leakDetectionWorksheet.write(row, 4, round(result['individual_scores']['frequency_bands'], 1))
+            leakDetectionWorksheet.write(row, 5, round(result['individual_scores']['power_ratio'], 1))
+            leakDetectionWorksheet.write(row, 6, round(result['detailed_results']['power_ratio']['max_power_increase_dB'], 1))
+            leakDetectionWorksheet.write(row, 7, round(result['detailed_results']['statistical']['detection_ratio'] * 100, 1))
+            leakDetectionWorksheet.write(row, 8, round(result['detailed_results']['statistical']['max_exceedance_ratio'], 2))
+            row += 1
+        
+        # Add frequency band analysis details
+        row += 2
+        leakDetectionWorksheet.write(row, 0, 'Frequency Band Analysis Details:')
+        row += 1
+        
+        # Headers for frequency band details
+        band_headers = ['Measurement', 'Frequency Band', 'SNR Ratio', 'Z-Score', 'Leak Detected']
+        for col, header in enumerate(band_headers):
+            leakDetectionWorksheet.write(row, col, header)
+        row += 1
+        
+        # Write frequency band details
+        for filename, result in leak_detection_results.items():
+            for band_name, band_result in result['detailed_results']['frequency_bands'].items():
+                leakDetectionWorksheet.write(row, 0, filename)
+                leakDetectionWorksheet.write(row, 1, band_name.replace('_', ' ').replace('band ', ''))
+                leakDetectionWorksheet.write(row, 2, round(band_result['snr_ratio'], 2))
+                leakDetectionWorksheet.write(row, 3, round(band_result['z_score'], 2))
+                leakDetectionWorksheet.write(row, 4, 'YES' if band_result['leak_detected'] else 'NO')
+                row += 1
+        
+        # Add summary statistics
+        row += 2
+        leakDetectionWorksheet.write(row, 0, 'Detection Summary:')
+        row += 1
+        
+        # Count detections by probability
+        high_prob = sum(1 for r in leak_detection_results.values() if r['leak_probability'] == 'HIGH')
+        medium_prob = sum(1 for r in leak_detection_results.values() if r['leak_probability'] == 'MEDIUM')
+        low_prob = sum(1 for r in leak_detection_results.values() if r['leak_probability'] == 'LOW')
+        
+        leakDetectionWorksheet.write(row, 0, 'High Probability Leaks:')
+        leakDetectionWorksheet.write(row, 1, high_prob)
+        row += 1
+        leakDetectionWorksheet.write(row, 0, 'Medium Probability Leaks:')
+        leakDetectionWorksheet.write(row, 1, medium_prob)
+        row += 1
+        leakDetectionWorksheet.write(row, 0, 'Low Probability Leaks:')
+        leakDetectionWorksheet.write(row, 1, low_prob)
+        row += 1
+        
+        # Average scores
+        if leak_detection_results:
+            avg_composite = np.mean([r['composite_score'] for r in leak_detection_results.values()])
+            leakDetectionWorksheet.write(row, 0, 'Average Composite Score:')
+            leakDetectionWorksheet.write(row, 1, round(avg_composite, 1))
 
 # Close summary workbook
 summaryWorkbook.close()
