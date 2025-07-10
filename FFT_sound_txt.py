@@ -185,6 +185,18 @@ def detect_leak_statistical(leak_psd, noleak_baseline, confidence_factor=3):
 def detect_leak_frequency_bands(freq, leak_psd, noleak_baseline):
     """Analyze specific frequency bands where leaks typically occur"""
     leak_bands = [
+        # Very low frequency bands (1-100 Hz) - 10 bands
+        (1, 10),       # Ultra-low frequency structural
+        (10, 20),      # Very low frequency vibrations
+        (20, 30),      # Low frequency structural response
+        (30, 40),      # Mechanical vibrations
+        (40, 50),      # Power line and mechanical harmonics
+        (50, 60),      # Power frequency range
+        (60, 70),      # Post-power frequency
+        (70, 80),      # Low acoustic range
+        (80, 90),      # Pre-acoustic range
+        (90, 100),     # Low acoustic transition
+        # Original frequency bands
         (100, 500),    # Low frequency structural vibrations
         (500, 2000),   # Mid frequency acoustic emissions  
         (2000, 8000),  # High frequency turbulence
