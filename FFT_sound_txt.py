@@ -102,8 +102,7 @@ for DataFrame in ListDataFrames:
             psd_single = (np.abs(fft[j])**2) / (N * fs) * hanning_correction
             psd.append(psd_single)
         
-        psd_AVG = np.mean(psd, axis=0)
-        psd_MIN = np.min(psd, axis=0)      
+        psd_AVG = np.mean(psd, axis=0)      
 
         # Store chart series info for this file
         chart_series_info.append({
@@ -122,7 +121,7 @@ for DataFrame in ListDataFrames:
         summaryWorksheet = summaryWorkbook.add_worksheet(ListFileNames[iLoop])
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD_AVG', 'PSD_MIN']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_AVG_Real', 'FFT_AVG_Imag', 'FFT_AVG_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD_AVG']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
 
@@ -149,7 +148,6 @@ for DataFrame in ListDataFrames:
             summaryWorksheet.write(i+1,7,fft_MIN[i].imag)
             summaryWorksheet.write(i+1,8,fftAbs_MIN[i])
             summaryWorksheet.write(i+1,9,psd_AVG[i])
-            summaryWorksheet.write(i+1,10,psd_MIN[i])
         
 
         # workbook.close()
@@ -299,7 +297,7 @@ if chart_series_info:
             series_config = {
                 'name': series_info['filename'],
                 'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # PSD_MIN column (column K)
+                'values': [series_info['sheet_name'], 1, 9, series_info['data_points'], 9],      # PSD_AVG column (column J)
                 'line': {'width': 2}
             }
             # Apply distinguishable color for regular series
@@ -315,7 +313,7 @@ if chart_series_info:
             series_config = {
                 'name': series_info['filename'],
                 'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # PSD_MIN column (column K)
+                'values': [series_info['sheet_name'], 1, 9, series_info['data_points'], 9],      # PSD_AVG column (column J)
                 'line': {'width': 2}
             }
             # Apply grey color in ascending order (darker to lighter)
@@ -325,7 +323,7 @@ if chart_series_info:
             chartPSD.add_series(series_config)
     
     # Configure PSD chart with logarithmic frequency axis
-    chartPSD.set_title({'name': 'PSD Frequency vs Minimum Values', 'name_font': {'size': 12}})
+    chartPSD.set_title({'name': 'PSD Frequency vs Average Values', 'name_font': {'size': 12}})
     chartPSD.set_x_axis({
         'name': 'Frequency (Hz)',
         'log_base': 10,
@@ -334,7 +332,7 @@ if chart_series_info:
         'num_font': {'size': 12}
     })
     chartPSD.set_y_axis({
-        'name': 'PSD Minimum Values',
+        'name': 'PSD Average Values',
         'label_position': 'low',
         'name_layout': {'x': 0.02, 'y': 0.5},
         'name_font': {'size': 12},
