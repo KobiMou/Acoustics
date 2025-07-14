@@ -1,0 +1,76 @@
+{
+  "analysis_parameters": {
+    "n_samples": 131072,
+    "n_averages": 7,
+    "skip_rows": 1,
+    "hanning_window": true,
+    "hanning_correction_factor": 2.67
+  },
+  "leak_detection": {
+    "statistical": {
+      "confidence_factor": 3,
+      "detection_threshold_multiplier": 1.0
+    },
+    "power_ratio": {
+      "threshold_db": 8,
+      "minimum_increase_db": 5
+    },
+    "frequency_bands": [
+      {"name": "ultra_low_structural", "freq_range": [1, 10], "description": "Ultra-low frequency structural"},
+      {"name": "very_low_vibrations", "freq_range": [10, 20], "description": "Very low frequency vibrations"},
+      {"name": "low_structural", "freq_range": [20, 30], "description": "Low frequency structural response"},
+      {"name": "mechanical_vibrations", "freq_range": [30, 40], "description": "Mechanical vibrations"},
+      {"name": "power_harmonics", "freq_range": [40, 50], "description": "Power line and mechanical harmonics"},
+      {"name": "power_frequency", "freq_range": [50, 60], "description": "Power frequency range"},
+      {"name": "post_power", "freq_range": [60, 70], "description": "Post-power frequency"},
+      {"name": "low_acoustic", "freq_range": [70, 80], "description": "Low acoustic range"},
+      {"name": "pre_acoustic", "freq_range": [80, 90], "description": "Pre-acoustic range"},
+      {"name": "acoustic_transition", "freq_range": [90, 100], "description": "Low acoustic transition"},
+      {"name": "low_structural_1", "freq_range": [100, 150], "description": "Low structural range 1"},
+      {"name": "low_structural_2", "freq_range": [150, 200], "description": "Low structural range 2"},
+      {"name": "low_structural_3", "freq_range": [200, 250], "description": "Low structural range 3"},
+      {"name": "low_structural_4", "freq_range": [250, 300], "description": "Low structural range 4"},
+      {"name": "low_structural_5", "freq_range": [300, 350], "description": "Low structural range 5"},
+      {"name": "low_structural_6", "freq_range": [350, 400], "description": "Low structural range 6"},
+      {"name": "low_structural_7", "freq_range": [400, 450], "description": "Low structural range 7"},
+      {"name": "low_structural_8", "freq_range": [450, 500], "description": "Low structural range 8"},
+      {"name": "mid_acoustic_1", "freq_range": [500, 1500], "description": "Mid frequency acoustic emissions 1"},
+      {"name": "mid_acoustic_2", "freq_range": [1500, 2000], "description": "Mid frequency acoustic emissions 2"},
+      {"name": "high_turbulence", "freq_range": [2000, 8000], "description": "High frequency turbulence"},
+      {"name": "ultrasonic", "freq_range": [8000, 20000], "description": "Ultrasonic range"}
+    ],
+    "scoring_weights": {
+      "statistical": 0.4,
+      "frequency_bands": 0.4,
+      "power_ratio": 0.2
+    },
+    "probability_thresholds": {
+      "high": 70,
+      "medium": 40
+    }
+  },
+  "visualization": {
+    "chart_width": 1400,
+    "chart_height": 700,
+    "line_width": 2,
+    "font_size": 12,
+    "colors": {
+      "grey_scale": ["#808080", "#959595", "#AAAAAA", "#BFBFBF", "#D4D4D4", "#E9E9E9", "#F0F0F0", "#F8F8F8"],
+      "distinguishable": ["#FF0000", "#0000FF", "#00FF00", "#FF8000", "#8000FF", "#FF0080", "#00FFFF", "#FFFF00", 
+                         "#800000", "#000080", "#008000", "#804000", "#400080", "#800040", "#008080", "#808000"]
+    }
+  },
+  "file_processing": {
+    "supported_extensions": [".csv", ".txt", ".dat"],
+    "delimiter_options": ["\\s+", ",", "\t", ";"],
+    "distance_pattern": "(\\d+)m",
+    "noleak_identifier": "NoLeak"
+  },
+  "output": {
+    "create_individual_files": false,
+    "summary_filename": "summary.xlsx",
+    "include_charts": true,
+    "chart_types": ["FFT", "Log_Scale", "PSD", "SNR", "SNR_Distance_Specific"],
+    "include_leak_detection": true
+  }
+}
