@@ -6,10 +6,15 @@ import scipy.fftpack
 import matplotlib.pyplot as plt
 import re
 from scipy import stats
+import librosa
+import soundfile as sf
+from scipy.io import wavfile
 
-path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_10072025\test_10072025\txt_files'
+# Update path to point to folder containing folders with WAV files
+path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\audio_data'
 
-files = os.listdir(path)
+# Get all subfolders in the main path
+subfolders = [f for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]
 
 ListFileNames = []
 ListDataFrames = []
@@ -20,16 +25,122 @@ n_AVG = 7
 # Create list of tuples (filename, dataframe) for sorting
 file_data_pairs = []
 
-for f in files:
-    fSplit = f.split('.')
-    fName = fSplit[0]
-    if ' ' in fName: fName = fName.replace(' ', '_')
-    fullpath = os.path.join(path, f)
-    skipRows = 1 # skip only header: 1, skip header and first data row: 2
-    DataFrame = pd.read_csv(fullpath, header=None, skiprows=skipRows, delimiter='\s+')
-    file_data_pairs.append((fName, DataFrame))
+def extract_audio_segments(wav_file_path, segment_type='leak'):
+    """
+    Extract audio segments from WAV file
+    - Leak: 35 seconds starting after 10 seconds from beginning
+    - NoLeak: 35 seconds at the end with 10 seconds offset from end
+    """
+    try:
+        # Load audio file
+        audio_data, sample_rate = librosa.load(wav_file_path, sr=None)
+        
+        # Calculate segment parameters
+        segment_duration = 35  # seconds
+        offset_duration = 10   # seconds
+        
+        segment_samples = int(segment_duration * sample_rate)
+        offset_samples = int(offset_duration * sample_rate)
+        
+        # Check if file is long enough for both segments
+        min_required_duration = segment_duration + 2 * offset_duration  # 55 seconds minimum
+        file_duration = len(audio_data) / sample_rate
+        
+        if file_duration < min_required_duration:
+            print(f"Warning: {wav_file_path} is only {file_duration:.1f}s long, need at least {min_required_duration}s")
+            return None, None
+        
+        if segment_type.lower() == 'leak':
+            # Extract leak segment: start after 10 seconds, duration 35 seconds
+            start_sample = offset_samples
+            end_sample = start_sample + segment_samples
+        else:  # noleak
+            # Extract noleak segment: 35 seconds at end with 10 seconds offset
+            end_sample = len(audio_data) - offset_samples
+            start_sample = end_sample - segment_samples
+        
+        # Double-check bounds
+        if start_sample < 0 or end_sample > len(audio_data):
+            print(f"Warning: Invalid segment bounds for {wav_file_path} ({segment_type})")
+            return None, None
+        
+        # Extract the segment
+        segment_data = audio_data[start_sample:end_sample]
+        
+        # Create time array starting from 0 for each segment
+        time_array = np.arange(len(segment_data)) / sample_rate
+        
+        print(f"Extracted {segment_type} segment from {os.path.basename(wav_file_path)}: {len(segment_data)} samples @ {sample_rate} Hz")
+        
+        return time_array, segment_data
+        
+    except Exception as e:
+        print(f"Error processing {wav_file_path}: {e}")
+        return None, None
 
-# Sort by numeric value before "m"
+def process_wav_files_in_folder(folder_path):
+    """Process all WAV files in a folder and extract leak/noleak segments"""
+    wav_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.wav')]
+    
+    processed_data = []
+    
+    for wav_file in wav_files:
+        wav_path = os.path.join(folder_path, wav_file)
+        base_name = os.path.splitext(wav_file)[0]
+        
+        # Extract leak segment
+        time_leak, signal_leak = extract_audio_segments(wav_path, 'leak')
+        if time_leak is not None and signal_leak is not None:
+            # Create DataFrame similar to original text format
+            leak_df = pd.DataFrame({
+                0: time_leak,
+                1: signal_leak
+            })
+            processed_data.append((f"{base_name}_leak", leak_df))
+        
+        # Extract noleak segment
+        time_noleak, signal_noleak = extract_audio_segments(wav_path, 'noleak')
+        if time_noleak is not None and signal_noleak is not None:
+            # Create DataFrame similar to original text format
+            noleak_df = pd.DataFrame({
+                0: time_noleak,
+                1: signal_noleak
+            })
+            processed_data.append((f"{base_name}_noleak", noleak_df))
+    
+    return processed_data
+
+# Process all subfolders
+print(f"Starting audio analysis from: {path}")
+print(f"Found {len(subfolders)} subfolders to process")
+
+total_wav_files = 0
+total_segments = 0
+
+for subfolder in subfolders:
+    subfolder_path = os.path.join(path, subfolder)
+    wav_files_in_folder = [f for f in os.listdir(subfolder_path) if f.lower().endswith('.wav')]
+    total_wav_files += len(wav_files_in_folder)
+    
+    print(f"\nProcessing folder: {subfolder} ({len(wav_files_in_folder)} WAV files)")
+    
+    # Process WAV files in this subfolder
+    folder_data = process_wav_files_in_folder(subfolder_path)
+    total_segments += len(folder_data)
+    
+    # Add subfolder prefix to filenames for organization
+    for fName, DataFrame in folder_data:
+        prefixed_name = f"{subfolder}_{fName}"
+        if ' ' in prefixed_name: 
+            prefixed_name = prefixed_name.replace(' ', '_')
+        file_data_pairs.append((prefixed_name, DataFrame))
+
+print(f"\nSummary:")
+print(f"- Total WAV files processed: {total_wav_files}")
+print(f"- Total segments extracted: {total_segments}")
+print(f"- Ready for FFT analysis: {len(file_data_pairs)} segments")
+
+# Sort by numeric value before "m" (if present)
 def extract_number_before_m(filename):
     match = re.search(r'(\d+)m', filename)
     return int(match.group(1)) if match else float('inf')
@@ -42,7 +153,7 @@ for fName, DataFrame in file_data_pairs:
     ListDataFrames.append(DataFrame)
 
 # Create summary workbook
-summaryWorkbook = xlsxwriter.Workbook('summary.xlsx')
+summaryWorkbook = xlsxwriter.Workbook('audio_analysis_summary.xlsx')
 
 # Store chart series info and analysis data
 chart_series_info = []
