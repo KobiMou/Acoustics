@@ -25,6 +25,71 @@ n_AVG = 7
 # Create list of tuples (filename, dataframe) for sorting
 file_data_pairs = []
 
+def sanitize_worksheet_name(name, used_names=None):
+    """
+    Sanitize worksheet name to comply with Excel's 31-character limit
+    and ensure uniqueness within the workbook.
+    
+    Args:
+        name: Original worksheet name
+        used_names: Set of already used names to avoid duplicates
+    
+    Returns:
+        Sanitized name that is <= 31 characters and unique
+    """
+    if used_names is None:
+        used_names = set()
+    
+    # Excel worksheet name restrictions:
+    # - Max 31 characters
+    # - Cannot contain: [ ] : * ? / \
+    # - Cannot start or end with apostrophe
+    
+    # Remove invalid characters
+    invalid_chars = ['[', ']', ':', '*', '?', '/', '\\', "'"]
+    sanitized = name
+    for char in invalid_chars:
+        sanitized = sanitized.replace(char, '_')
+    
+    # Remove leading/trailing apostrophes
+    sanitized = sanitized.strip("'")
+    
+    # Truncate to 31 characters
+    if len(sanitized) <= 31:
+        base_name = sanitized
+        suffix = ""
+    else:
+        # Reserve space for potential suffix (_1, _2, etc.)
+        base_name = sanitized[:27]  # Leave 4 chars for suffix like "_123"
+        suffix = ""
+        print(f"  Warning: Worksheet name truncated: '{name}' -> '{base_name}...'")
+        print(f"           Original length: {len(name)}, Truncated length: {len(base_name)}")
+    
+    # Ensure uniqueness
+    final_name = base_name + suffix
+    counter = 1
+    
+    while final_name in used_names:
+        # Create suffix with counter
+        suffix = f"_{counter}"
+        # Adjust base name length to accommodate suffix
+        max_base_length = 31 - len(suffix)
+        adjusted_base = base_name[:max_base_length]
+        final_name = adjusted_base + suffix
+        counter += 1
+        
+        # Safety check to prevent infinite loop
+        if counter > 999:
+            final_name = f"Sheet_{counter}"
+            break
+    
+    # Log if we had to add a suffix for uniqueness
+    if suffix:
+        print(f"  Info: Added suffix for uniqueness: '{base_name}' -> '{final_name}'")
+    
+    used_names.add(final_name)
+    return final_name
+
 def extract_audio_segments(wav_file_path, segment_type='leak'):
     """
     Extract audio segments from WAV file
@@ -130,6 +195,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     summary_filename = os.path.join(subfolder_path, f"{subfolder_name}_analysis_summary.xlsx")
     summaryWorkbook = xlsxwriter.Workbook(summary_filename)
     
+    # Track used worksheet names to ensure uniqueness
+    used_worksheet_names = set()
+    
     # Store chart series info and analysis data for this folder
     chart_series_info = []
     analysis_data = []
@@ -212,10 +280,13 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             snr_distance_linear = snr_linear * distance_factor
             snr_distance_dB = 10 * np.log10(snr_distance_linear)
             
+            # Sanitize worksheet name to comply with Excel's 31-character limit
+            sanitized_sheet_name = sanitize_worksheet_name(ListFileNames[iLoop], used_worksheet_names)
+            
             # Store chart series info for this file
             chart_series_info.append({
                 'filename': ListFileNames[iLoop],
-                'sheet_name': ListFileNames[iLoop],
+                'sheet_name': sanitized_sheet_name,
                 'data_points': N//2
             })
             
@@ -229,7 +300,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             })
             
             # Create worksheet in summary workbook for this file
-            summaryWorksheet = summaryWorkbook.add_worksheet(ListFileNames[iLoop])
+            summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
             
             # Write headers for summary worksheet
             headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR_dB', 'SNR_Distance_dB']
@@ -450,14 +521,22 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         for i, data in enumerate(analysis_data):
             filename = data['filename']
             
-            # Find and update the corresponding worksheet
-            for ws in summaryWorkbook.worksheets():
-                if ws.get_name() == filename:
-                    # Update SNR calculations with global baseline
-                    updated_snr = 10 * np.log10(data['psd'] / global_noise_floor)
-                    for row in range(len(updated_snr)):
-                        ws.write(row+1, 10, updated_snr[row])
+            # Find the corresponding sanitized sheet name
+            sanitized_sheet_name = None
+            for series_info in chart_series_info:
+                if series_info['filename'] == filename:
+                    sanitized_sheet_name = series_info['sheet_name']
                     break
+            
+            if sanitized_sheet_name:
+                # Find and update the corresponding worksheet
+                for ws in summaryWorkbook.worksheets():
+                    if ws.get_name() == sanitized_sheet_name:
+                        # Update SNR calculations with global baseline
+                        updated_snr = 10 * np.log10(data['psd'] / global_noise_floor)
+                        for row in range(len(updated_snr)):
+                            ws.write(row+1, 10, updated_snr[row])
+                        break
     
     def analyze_leak_detection_distance_specific(analysis_data):
         """
@@ -503,7 +582,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     
     # Create plot worksheet
     if chart_series_info:
-        plotWorksheet = summaryWorkbook.add_worksheet('Plot')
+        plot_sheet_name = sanitize_worksheet_name('Plot', used_worksheet_names)
+        plotWorksheet = summaryWorkbook.add_worksheet(plot_sheet_name)
         
         # Create scatter chart with straight lines
         chart = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
@@ -571,7 +651,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         plotWorksheet.insert_chart('A1', chart)
         
         # Create second plot worksheet with logarithmic Y-axis
-        plotLogWorksheet = summaryWorkbook.add_worksheet('Plot_Log_Scale')
+        plot_log_sheet_name = sanitize_worksheet_name('Plot_Log_Scale', used_worksheet_names)
+        plotLogWorksheet = summaryWorkbook.add_worksheet(plot_log_sheet_name)
         
         # Create scatter chart with straight lines (same as first plot)
         chartLog = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
@@ -634,7 +715,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     
     # Add leak detection results worksheet
     if leak_detection_distance_specific:
-        leakDetectionWorksheet = summaryWorkbook.add_worksheet('Leak_Detection_Results')
+        leak_detection_sheet_name = sanitize_worksheet_name('Leak_Detection_Results', used_worksheet_names)
+        leakDetectionWorksheet = summaryWorkbook.add_worksheet(leak_detection_sheet_name)
         
         # Write headers
         headers = ['Filename', 'Distance', 'Overall Score', 'Statistical Prob', 'Power Ratio (dB)', 'Leak Detected', 'Baseline Type']
