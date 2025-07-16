@@ -688,9 +688,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # First add all non-NoLeak series (colorful lines in background)
         color_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' not in series_info['filename']:
+            if 'NoLeak' not in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
                     'line': {'width': 2}
@@ -704,9 +704,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Then add all NoLeak series (grey lines in front)
         grey_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' in series_info['filename']:
+            if 'NoLeak' in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
                     'line': {'width': 2}
@@ -755,9 +755,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # First add all non-NoLeak series (colorful lines in background)
         color_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' not in series_info['filename']:
+            if 'NoLeak' not in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
                     'line': {'width': 2}
@@ -771,9 +771,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Then add all NoLeak series (grey lines in front)
         grey_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' in series_info['filename']:
+            if 'NoLeak' in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 8, series_info['data_points'], 8],      # FFT_MIN_Abs column (column I)
                     'line': {'width': 2}
@@ -823,9 +823,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # First add all non-NoLeak series (colorful lines in background)
         color_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' not in series_info['filename']:
+            if 'NoLeak' not in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 9, series_info['data_points'], 9],      # PSD_AVG column (column J)
                     'line': {'width': 2}
@@ -839,9 +839,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Then add all NoLeak series (grey lines in front)
         grey_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' in series_info['filename']:
+            if 'NoLeak' in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 9, series_info['data_points'], 9],      # PSD_AVG column (column J)
                     'line': {'width': 2}
@@ -890,9 +890,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # First add all non-NoLeak series (colorful lines in background)
         color_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' not in series_info['filename']:
+            if 'NoLeak' not in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
                     'line': {'width': 2}
@@ -906,10 +906,10 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Then add all NoLeak series as reference (flat line at 0 dB)
         grey_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' in series_info['filename']:
+            if 'NoLeak' in series_info['sheet_name']:
                 # Create SNR reference line for NoLeak measurements
                 series_config = {
-                    'name': series_info['filename'] + ' (Reference)',
+                    'name': series_info['sheet_name'] + ' (Reference)',
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
                     'line': {'width': 1}
@@ -1006,9 +1006,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # First add all non-NoLeak series (colorful lines in background)
         color_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' not in series_info['filename']:
+            if 'NoLeak' not in series_info['sheet_name']:
                 series_config = {
-                    'name': series_info['filename'],
+                    'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
                     'line': {'width': 2}
@@ -1022,10 +1022,10 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Then add all NoLeak series as reference
         grey_index = 0
         for series_info in chart_series_info:
-            if 'NoLeak' in series_info['filename']:
+            if 'NoLeak' in series_info['sheet_name']:
                 # Create SNR reference line for NoLeak measurements (should be around 0 dB for distance-specific)
                 series_config = {
-                    'name': series_info['filename'] + ' (Distance Ref)',
+                    'name': series_info['sheet_name'] + ' (Distance Ref)',
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
                     'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
                     'line': {'width': 1}
