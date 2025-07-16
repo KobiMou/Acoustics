@@ -327,7 +327,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         filename = ListFileNames[iLoop]
         
         # Extract distance and any additional word after it
-        distance_match = re.search(r'(\d+)m(?:_?(\w+))?', filename)
+        distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
         if distance_match:
             distance_str = f"{distance_match.group(1)}m"
             additional_word = distance_match.group(2)  # The word after 'm' (if any)
