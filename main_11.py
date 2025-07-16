@@ -220,6 +220,10 @@ def process_wav_files_in_folder(folder_path):
 print(f"Starting audio analysis from: {path}")
 print(f"Found {len(subfolders)} subfolders to process")
 print(f"Note: Only processing WAV files with distance pattern (e.g., 'sensor_5m.wav', 'test_10m.wav')")
+print(f"      Additional words after distance are included in worksheet names:")
+print(f"      - 'sensor_5m_leak' -> '5m_Leak'")
+print(f"      - 'sensor_5m_front_leak' -> '5m_front_Leak'")
+print(f"      - 'test_10m_sensor_noleak' -> '10m_sensor_NoLeak'")
 print(f"      Files without distance pattern (e.g., 'test.wav', 'background.wav') will be ignored")
 
 total_wav_files = 0
@@ -321,9 +325,24 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             # Create worksheet name based on distance and leak/noleak designation
             filename = ListFileNames[iLoop]
             
-            # Extract distance from filename
-            distance_match = re.search(r'(\d+)m', filename)
-            distance_str = f"{distance_match.group(1)}m" if distance_match else "Unknown"
+            # Extract distance and any additional word after it
+            distance_match = re.search(r'(\d+)m(?:_?(\w+))?', filename)
+            if distance_match:
+                distance_str = f"{distance_match.group(1)}m"
+                additional_word = distance_match.group(2)  # The word after 'm' (if any)
+                
+                # Build distance part with additional word if present
+                if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                    distance_part = f"{distance_str}_{additional_word}"
+                else:
+                    distance_part = distance_str
+                    additional_word = None  # No additional word found
+            else:
+                distance_part = "Unknown"
+                distance_str = "Unknown"
+                additional_word = None
+            
+            print(f"    Distance pattern found: '{distance_part}' from filename: {filename}")
             
             # Determine leak/noleak designation
             if '_leak' in filename.lower():
@@ -333,8 +352,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             else:
                 leak_designation = "Unknown"
             
-            # Create worksheet name: "5m_Leak", "10m_NoLeak", etc.
-            worksheet_name = f"{distance_str}_{leak_designation}"
+            # Create worksheet name: "5m_sensor_Leak", "10m_test_NoLeak", etc.
+            worksheet_name = f"{distance_part}_{leak_designation}"
             
             # Ensure uniqueness by adding suffix if needed
             original_worksheet_name = worksheet_name
@@ -348,6 +367,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             
             # Log the worksheet name creation
             print(f"    Creating worksheet: '{sanitized_sheet_name}' for file: {os.path.basename(filename)}")
+            if additional_word:
+                print(f"      Enhanced naming: distance='{distance_str}', additional='{additional_word}'")
             
             # Store chart series info for this file
             chart_series_info.append({
