@@ -120,70 +120,6 @@ def sanitize_excel_value(value, default=0):
     except (TypeError, ValueError):
         return default
 
-def sanitize_worksheet_name(name, used_names=None):
-    """
-    Sanitize worksheet name to comply with Excel's 31-character limit
-    and ensure uniqueness within the workbook.
-    
-    Args:
-        name: Original worksheet name
-        used_names: Set of already used names to avoid duplicates
-    
-    Returns:
-        Sanitized name that is <= 31 characters and unique
-    """
-    if used_names is None:
-        used_names = set()
-    
-    # Excel worksheet name restrictions:
-    # - Max 31 characters
-    # - Cannot contain: [ ] : * ? / \
-    # - Cannot start or end with apostrophe
-    
-    # Remove invalid characters
-    invalid_chars = ['[', ']', ':', '*', '?', '/', '\\', "'"]
-    sanitized = name
-    for char in invalid_chars:
-        sanitized = sanitized.replace(char, '_')
-    
-    # Remove leading/trailing apostrophes
-    sanitized = sanitized.strip("'")
-    
-    # Truncate to 31 characters
-    if len(sanitized) <= 31:
-        base_name = sanitized
-        suffix = ""
-    else:
-        # Reserve space for potential suffix (_1, _2, etc.)
-        base_name = sanitized[:27]  # Leave 4 chars for suffix like "_123"
-        suffix = ""
-        print(f"  Warning: Worksheet name truncated: '{name}' -> '{base_name}...'")
-        print(f"           Original length: {len(name)}, Truncated length: {len(base_name)}")
-    
-    # Ensure uniqueness
-    final_name = base_name + suffix
-    counter = 1
-    
-    while final_name in used_names:
-        # Create suffix with counter
-        suffix = f"_{counter}"
-        # Adjust base name length to accommodate suffix
-        max_base_length = 31 - len(suffix)
-        adjusted_base = base_name[:max_base_length]
-        final_name = adjusted_base + suffix
-        counter += 1
-        
-        # Safety check to prevent infinite loop
-        if counter > 999:
-            final_name = f"Sheet_{counter}"
-            break
-    
-    # Log if we had to add a suffix for uniqueness
-    if suffix:
-        print(f"  Info: Added suffix for uniqueness: '{base_name}' -> '{final_name}'")
-    
-    used_names.add(final_name)
-    return final_name
 
 def extract_audio_segments(wav_file_path, segment_type='leak'):
     """
@@ -387,8 +323,36 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             snr_distance_linear = snr_linear * distance_factor
             snr_distance_dB = 10 * safe_log10(snr_distance_linear, default=-100)
             
-            # Sanitize worksheet name to comply with Excel's 31-character limit
-            sanitized_sheet_name = sanitize_worksheet_name(ListFileNames[iLoop], used_worksheet_names)
+            # Create worksheet name based on distance and leak/noleak designation
+            filename = ListFileNames[iLoop]
+            
+            # Extract distance from filename
+            distance_match = re.search(r'(\d+)m', filename)
+            distance_str = f"{distance_match.group(1)}m" if distance_match else "Unknown"
+            
+            # Determine leak/noleak designation
+            if '_leak' in filename.lower():
+                leak_designation = "Leak"
+            elif '_noleak' in filename.lower():
+                leak_designation = "NoLeak"
+            else:
+                leak_designation = "Unknown"
+            
+            # Create worksheet name: "5m_Leak", "10m_NoLeak", etc.
+            worksheet_name = f"{distance_str}_{leak_designation}"
+            
+            # Ensure uniqueness by adding suffix if needed
+            original_worksheet_name = worksheet_name
+            counter = 1
+            while worksheet_name in used_worksheet_names:
+                worksheet_name = f"{original_worksheet_name}_{counter}"
+                counter += 1
+            
+            used_worksheet_names.add(worksheet_name)
+            sanitized_sheet_name = worksheet_name
+            
+            # Log the worksheet name creation
+            print(f"    Creating worksheet: '{sanitized_sheet_name}' for file: {os.path.basename(filename)}")
             
             # Store chart series info for this file
             chart_series_info.append({
@@ -690,7 +654,12 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     
     # Create plot worksheet
     if chart_series_info:
-        plot_sheet_name = sanitize_worksheet_name('Plot', used_worksheet_names)
+        plot_sheet_name = 'Plot'
+        counter = 1
+        while plot_sheet_name in used_worksheet_names:
+            plot_sheet_name = f'Plot_{counter}'
+            counter += 1
+        used_worksheet_names.add(plot_sheet_name)
         plotWorksheet = summaryWorkbook.add_worksheet(plot_sheet_name)
         
         # Create scatter chart with straight lines
@@ -759,7 +728,12 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         plotWorksheet.insert_chart('A1', chart)
         
         # Create second plot worksheet with logarithmic Y-axis
-        plot_log_sheet_name = sanitize_worksheet_name('Plot_Log_Scale', used_worksheet_names)
+        plot_log_sheet_name = 'Plot_Log_Scale'
+        counter = 1
+        while plot_log_sheet_name in used_worksheet_names:
+            plot_log_sheet_name = f'Plot_Log_Scale_{counter}'
+            counter += 1
+        used_worksheet_names.add(plot_log_sheet_name)
         plotLogWorksheet = summaryWorkbook.add_worksheet(plot_log_sheet_name)
         
         # Create scatter chart with straight lines (same as first plot)
@@ -823,7 +797,12 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     
     # Add leak detection results worksheet
     if leak_detection_distance_specific:
-        leak_detection_sheet_name = sanitize_worksheet_name('Leak_Detection_Results', used_worksheet_names)
+        leak_detection_sheet_name = 'Leak_Detection_Results'
+        counter = 1
+        while leak_detection_sheet_name in used_worksheet_names:
+            leak_detection_sheet_name = f'Leak_Detection_Results_{counter}'
+            counter += 1
+        used_worksheet_names.add(leak_detection_sheet_name)
         leakDetectionWorksheet = summaryWorkbook.add_worksheet(leak_detection_sheet_name)
         
         # Write headers
