@@ -25,6 +25,81 @@ n_AVG = 7
 # Create list of tuples (filename, dataframe) for sorting
 file_data_pairs = []
 
+def safe_log10(x, default=-100):
+    """
+    Safely compute log10, handling zero/negative values and NaN/INF
+    
+    Args:
+        x: Input value or array
+        default: Default value to use for invalid inputs
+    
+    Returns:
+        log10(x) with NaN/INF values replaced by default
+    """
+    try:
+        # Handle arrays
+        if hasattr(x, '__len__'):
+            result = np.full_like(x, default, dtype=float)
+            valid_mask = (x > 0) & np.isfinite(x)
+            if np.any(valid_mask):
+                result[valid_mask] = np.log10(x[valid_mask])
+            return result
+        else:
+            # Handle scalar
+            if x > 0 and np.isfinite(x):
+                return np.log10(x)
+            else:
+                return default
+    except:
+        return default
+
+def safe_divide(numerator, denominator, default=0):
+    """
+    Safely divide two values, handling division by zero and NaN/INF
+    
+    Args:
+        numerator: Numerator value or array
+        denominator: Denominator value or array
+        default: Default value to use for invalid divisions
+    
+    Returns:
+        numerator/denominator with NaN/INF values replaced by default
+    """
+    try:
+        # Handle division by zero and invalid values
+        if hasattr(denominator, '__len__'):
+            result = np.full_like(numerator, default, dtype=float)
+            valid_mask = (denominator != 0) & np.isfinite(denominator) & np.isfinite(numerator)
+            if np.any(valid_mask):
+                result[valid_mask] = numerator[valid_mask] / denominator[valid_mask]
+            return result
+        else:
+            # Handle scalar
+            if denominator != 0 and np.isfinite(denominator) and np.isfinite(numerator):
+                return numerator / denominator
+            else:
+                return default
+    except:
+        return default
+
+def sanitize_excel_value(value, default=0):
+    """
+    Sanitize a value before writing to Excel, handling NaN and INF values
+    
+    Args:
+        value: Value to sanitize
+        default: Default value to use for invalid values
+    
+    Returns:
+        Sanitized value safe for Excel
+    """
+    try:
+        if np.isnan(value) or np.isinf(value):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 def sanitize_worksheet_name(name, used_names=None):
     """
     Sanitize worksheet name to comply with Excel's 31-character limit
@@ -193,7 +268,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     
     # Create separate workbook for this folder
     summary_filename = os.path.join(subfolder_path, f"{subfolder_name}_analysis_summary.xlsx")
-    summaryWorkbook = xlsxwriter.Workbook(summary_filename)
+    summaryWorkbook = xlsxwriter.Workbook(summary_filename, {'nan_inf_to_errors': True})
     
     # Track used worksheet names to ensure uniqueness
     used_worksheet_names = set()
@@ -270,15 +345,15 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             # Simple SNR calculation: signal power / noise floor
             signal_power = np.abs(fft_AVG)**2
             noise_floor = np.median(signal_power)  # Use median as noise floor estimate
-            snr_linear = signal_power / noise_floor
-            snr_dB = 10 * np.log10(snr_linear)
+            snr_linear = safe_divide(signal_power, noise_floor, default=1e-10)
+            snr_dB = 10 * safe_log10(snr_linear, default=-100)
             
             # Distance-specific SNR calculation
             distance_match = re.search(r'(\d+)m', ListFileNames[iLoop])
             distance = int(distance_match.group(1)) if distance_match else 1
-            distance_factor = 1 / (distance**2)  # Inverse square law
+            distance_factor = 1 / (distance**2) if distance > 0 else 1  # Inverse square law
             snr_distance_linear = snr_linear * distance_factor
-            snr_distance_dB = 10 * np.log10(snr_distance_linear)
+            snr_distance_dB = 10 * safe_log10(snr_distance_linear, default=-100)
             
             # Sanitize worksheet name to comply with Excel's 31-character limit
             sanitized_sheet_name = sanitize_worksheet_name(ListFileNames[iLoop], used_worksheet_names)
@@ -309,18 +384,18 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             
             # Write data to summary worksheet
             for i in range(N//2): # //2 for only positive side plotting 
-                summaryWorksheet.write(i+1,0,time_Array[i])
-                summaryWorksheet.write(i+1,1,data_Array[i])
-                summaryWorksheet.write(i+1,2,fftFreq[i])
-                summaryWorksheet.write(i+1,3,fft_AVG[i].real)
-                summaryWorksheet.write(i+1,4,fft_AVG[i].imag)
-                summaryWorksheet.write(i+1,5,fftAbs_AVG[i])
-                summaryWorksheet.write(i+1,6,fft_MIN[i].real)
-                summaryWorksheet.write(i+1,7,fft_MIN[i].imag)
-                summaryWorksheet.write(i+1,8,fftAbs_MIN[i])
-                summaryWorksheet.write(i+1,9,psd_AVG[i])
-                summaryWorksheet.write(i+1,10,snr_dB[i])
-                summaryWorksheet.write(i+1,11,snr_distance_dB[i])
+                summaryWorksheet.write(i+1,0,sanitize_excel_value(time_Array[i]))
+                summaryWorksheet.write(i+1,1,sanitize_excel_value(data_Array[i]))
+                summaryWorksheet.write(i+1,2,sanitize_excel_value(fftFreq[i]))
+                summaryWorksheet.write(i+1,3,sanitize_excel_value(fft_AVG[i].real))
+                summaryWorksheet.write(i+1,4,sanitize_excel_value(fft_AVG[i].imag))
+                summaryWorksheet.write(i+1,5,sanitize_excel_value(fftAbs_AVG[i]))
+                summaryWorksheet.write(i+1,6,sanitize_excel_value(fft_MIN[i].real))
+                summaryWorksheet.write(i+1,7,sanitize_excel_value(fft_MIN[i].imag))
+                summaryWorksheet.write(i+1,8,sanitize_excel_value(fftAbs_MIN[i]))
+                summaryWorksheet.write(i+1,9,sanitize_excel_value(psd_AVG[i]))
+                summaryWorksheet.write(i+1,10,sanitize_excel_value(snr_dB[i]))
+                summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_distance_dB[i]))
                 
             iLoop = iLoop + 1
     
@@ -381,13 +456,13 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                     baseline_power = np.mean(noleak_baseline[band_indices])
                     
                     # Calculate ratio
-                    power_ratio = leak_power / baseline_power if baseline_power > 0 else 0
+                    power_ratio = safe_divide(leak_power, baseline_power, default=0)
                     
                     band_results[f'{band_low}-{band_high}Hz'] = {
                         'leak_power': leak_power,
                         'baseline_power': baseline_power,
                         'power_ratio': power_ratio,
-                        'ratio_db': 10 * np.log10(power_ratio) if power_ratio > 0 else -np.inf
+                        'ratio_db': 10 * safe_log10(power_ratio, default=-100)
                     }
             
             return {
@@ -405,8 +480,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             leak_power = np.mean(leak_psd)
             baseline_power = np.mean(noleak_baseline)
             
-            power_ratio = leak_power / baseline_power if baseline_power > 0 else 0
-            ratio_dB = 10 * np.log10(power_ratio) if power_ratio > 0 else -np.inf
+            power_ratio = safe_divide(leak_power, baseline_power, default=0)
+            ratio_dB = 10 * safe_log10(power_ratio, default=-100)
             
             leak_detected = ratio_dB > threshold_dB
             
@@ -533,9 +608,10 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 for ws in summaryWorkbook.worksheets():
                     if ws.get_name() == sanitized_sheet_name:
                         # Update SNR calculations with global baseline
-                        updated_snr = 10 * np.log10(data['psd'] / global_noise_floor)
+                        snr_ratio = safe_divide(data['psd'], global_noise_floor, default=1e-10)
+                        updated_snr = 10 * safe_log10(snr_ratio, default=-100)
                         for row in range(len(updated_snr)):
-                            ws.write(row+1, 10, updated_snr[row])
+                            ws.write(row+1, 10, sanitize_excel_value(updated_snr[row]))
                         break
     
     def analyze_leak_detection_distance_specific(analysis_data):
@@ -727,18 +803,23 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         for filename, result in leak_detection_distance_specific.items():
             leakDetectionWorksheet.write(row, 0, filename)
             leakDetectionWorksheet.write(row, 1, result.get('distance', 'N/A'))
-            leakDetectionWorksheet.write(row, 2, result.get('overall_score', 'N/A'))
+            
+            # Overall score
+            overall_score = result.get('overall_score', 'N/A')
+            if overall_score != 'N/A':
+                overall_score = sanitize_excel_value(overall_score)
+            leakDetectionWorksheet.write(row, 2, overall_score)
             
             # Statistical probability
             stat_prob = 'N/A'
             if 'statistical' in result and 'leak_probability' in result['statistical']:
-                stat_prob = result['statistical']['leak_probability']
+                stat_prob = sanitize_excel_value(result['statistical']['leak_probability'])
             leakDetectionWorksheet.write(row, 3, stat_prob)
             
             # Power ratio
             power_ratio = 'N/A'
             if 'power_ratio' in result and 'ratio_dB' in result['power_ratio']:
-                power_ratio = result['power_ratio']['ratio_dB']
+                power_ratio = sanitize_excel_value(result['power_ratio']['ratio_dB'])
             leakDetectionWorksheet.write(row, 4, power_ratio)
             
             # Leak detected
