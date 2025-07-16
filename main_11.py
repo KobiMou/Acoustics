@@ -688,7 +688,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # First add all non-NoLeak series (colorful lines in background)
         color_index = 0
         for series_info in chart_series_info:
-            if 'noleak' not in series_info['filename'].lower():
+            if 'NoLeak' not in series_info['filename']:
                 series_config = {
                     'name': series_info['filename'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
@@ -704,7 +704,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Then add all NoLeak series (grey lines in front)
         grey_index = 0
         for series_info in chart_series_info:
-            if 'noleak' in series_info['filename'].lower():
+            if 'NoLeak' in series_info['filename']:
                 series_config = {
                     'name': series_info['filename'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
