@@ -298,9 +298,10 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 # Apply Hanning window to reduce spectral leakage
                 windowed_data = data_Array * hanning_window
                 
-                            #fftFreq = scipy.fftpack.fftfreq(N, st)
-            fft.append(np.fft.fft(windowed_data))
-            #fft = scipy.fftpack.fft(Array[1])
+                # Calculate FFT for this segment
+                fft.append(np.fft.fft(windowed_data))
+            
+            # Calculate fftAbs after all FFTs are computed
             fftAbs = np.abs(fft)/N*2*2 # Normalize result for correct amplitude (×2 for Hanning window compensation)
         
         fft_AVG = np.mean(fft, axis=0)  
