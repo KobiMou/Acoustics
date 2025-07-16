@@ -240,7 +240,17 @@ def extract_audio_segments(wav_file_path, segment_type='leak'):
 
 def process_wav_files_in_folder(folder_path):
     """Process all WAV files in a folder and extract leak/noleak segments"""
-    wav_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.wav')]
+    all_wav_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.wav')]
+    
+    # Filter WAV files to only include those with distance pattern (number + "m")
+    wav_files = []
+    for f in all_wav_files:
+        if re.search(r'\d+m', f):
+            wav_files.append(f)
+        else:
+            print(f"  Skipping {f} - no distance pattern found (expecting format like '5m', '10m', etc.)")
+    
+    print(f"  Found {len(wav_files)} WAV files with distance pattern (out of {len(all_wav_files)} total)")
     
     processed_data = []
     
@@ -273,6 +283,8 @@ def process_wav_files_in_folder(folder_path):
 # Process all subfolders
 print(f"Starting audio analysis from: {path}")
 print(f"Found {len(subfolders)} subfolders to process")
+print(f"Note: Only processing WAV files with distance pattern (e.g., 'sensor_5m.wav', 'test_10m.wav')")
+print(f"      Files without distance pattern (e.g., 'test.wav', 'background.wav') will be ignored")
 
 total_wav_files = 0
 total_segments = 0
@@ -903,10 +915,17 @@ def extract_number_before_m(filename):
 # Main processing loop - process each folder separately
 for subfolder in subfolders:
     subfolder_path = os.path.join(path, subfolder)
-    wav_files_in_folder = [f for f in os.listdir(subfolder_path) if f.lower().endswith('.wav')]
-    total_wav_files += len(wav_files_in_folder)
+    all_wav_files = [f for f in os.listdir(subfolder_path) if f.lower().endswith('.wav')]
     
-    print(f"\nProcessing folder: {subfolder} ({len(wav_files_in_folder)} WAV files)")
+    # Count only WAV files with distance pattern
+    wav_files_with_distance = [f for f in all_wav_files if re.search(r'\d+m', f)]
+    total_wav_files += len(wav_files_with_distance)
+    
+    print(f"\nProcessing folder: {subfolder} ({len(wav_files_with_distance)} WAV files with distance pattern)")
+    
+    if len(wav_files_with_distance) == 0:
+        print(f"  No WAV files with distance pattern found in {subfolder} - skipping folder")
+        continue
     
     # Process WAV files in this subfolder
     folder_data = process_wav_files_in_folder(subfolder_path)
@@ -918,10 +937,11 @@ for subfolder in subfolders:
 print(f"\n" + "="*50)
 print(f"🎵 ANALYSIS COMPLETE")
 print(f"="*50)
-print(f"- Total subfolders processed: {len(subfolders)}")
-print(f"- Total WAV files processed: {total_wav_files}")
+print(f"- Total subfolders scanned: {len(subfolders)}")
+print(f"- Total WAV files with distance pattern processed: {total_wav_files}")
 print(f"- Total segments extracted: {total_segments}")
-print(f"- Analysis files created: {len(subfolders)}")
-print(f"\nEach folder now contains its own analysis summary file.")
+print(f"- Analysis files created: {len([f for f in subfolders if len([x for x in os.listdir(os.path.join(path, f)) if x.lower().endswith('.wav') and re.search(r'\d+m', x)]) > 0])}")
+print(f"\nNote: Only WAV files containing distance pattern (number + 'm') were processed.")
+print(f"Each folder with valid files now contains its own analysis summary file.")
 
 print('OK')
