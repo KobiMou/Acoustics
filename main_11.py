@@ -68,19 +68,39 @@ def safe_divide(numerator, denominator, default=0):
     try:
         # Handle division by zero and invalid values
         if hasattr(denominator, '__len__'):
+            # Both numerator and denominator are arrays
             result = np.full_like(numerator, default, dtype=float)
             valid_mask = (denominator != 0) & np.isfinite(denominator) & np.isfinite(numerator)
             if np.any(valid_mask):
                 result[valid_mask] = numerator[valid_mask] / denominator[valid_mask]
             return result
         else:
-            # Handle scalar
-            if denominator != 0 and np.isfinite(denominator) and np.isfinite(numerator):
-                return numerator / denominator
+            # Denominator is scalar
+            if denominator != 0 and np.isfinite(denominator):
+                if hasattr(numerator, '__len__'):
+                    # Numerator is array, denominator is scalar
+                    result = np.full_like(numerator, default, dtype=float)
+                    valid_mask = np.isfinite(numerator)
+                    if np.any(valid_mask):
+                        result[valid_mask] = numerator[valid_mask] / denominator
+                    return result
+                else:
+                    # Both are scalars
+                    if np.isfinite(numerator):
+                        return numerator / denominator
+                    else:
+                        return default
             else:
-                return default
+                # Denominator is zero or invalid
+                if hasattr(numerator, '__len__'):
+                    return np.full_like(numerator, default, dtype=float)
+                else:
+                    return default
     except:
-        return default
+        if hasattr(numerator, '__len__'):
+            return np.full_like(numerator, default, dtype=float)
+        else:
+            return default
 
 def sanitize_excel_value(value, default=0):
     """
