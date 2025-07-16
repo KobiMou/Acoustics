@@ -1285,7 +1285,8 @@ print(f"="*50)
 print(f"- Total subfolders scanned: {len(subfolders)}")
 print(f"- Total WAV files with distance pattern processed: {total_wav_files}")
 print(f"- Total segments extracted: {total_segments}")
-print(f"- Analysis files created: {len([f for f in subfolders if len([x for x in os.listdir(os.path.join(path, f)) if x.lower().endswith('.wav') and re.search(r'\d+m', x)]) > 0])}")
+distance_pattern = r'\d+m'
+print(f"- Analysis files created: {len([f for f in subfolders if len([x for x in os.listdir(os.path.join(path, f)) if x.lower().endswith('.wav') and re.search(distance_pattern, x)]) > 0])}")
 print(f"\nNote: Only WAV files containing distance pattern (number + 'm') were processed.")
 print(f"Each folder with valid files now contains its own analysis summary file.")
 
