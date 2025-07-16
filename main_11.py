@@ -321,95 +321,95 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Calculate SNR (will be updated after all files are processed)
         snr_dB = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
         snr_distance_dB = np.zeros_like(psd_AVG)  # Placeholder for distance-specific SNR
+        
+        # Create worksheet name based on distance and leak/noleak designation
+        filename = ListFileNames[iLoop]
+        
+        # Extract distance and any additional word after it
+        distance_match = re.search(r'(\d+)m(?:_?(\w+))?', filename)
+        if distance_match:
+            distance_str = f"{distance_match.group(1)}m"
+            additional_word = distance_match.group(2)  # The word after 'm' (if any)
             
-            # Create worksheet name based on distance and leak/noleak designation
-            filename = ListFileNames[iLoop]
-            
-            # Extract distance and any additional word after it
-            distance_match = re.search(r'(\d+)m(?:_?(\w+))?', filename)
-            if distance_match:
-                distance_str = f"{distance_match.group(1)}m"
-                additional_word = distance_match.group(2)  # The word after 'm' (if any)
-                
-                # Build distance part with additional word if present
-                if additional_word and additional_word.lower() not in ['leak', 'noleak']:
-                    distance_part = f"{distance_str}_{additional_word}"
-                else:
-                    distance_part = distance_str
-                    additional_word = None  # No additional word found
+            # Build distance part with additional word if present
+            if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                distance_part = f"{distance_str}_{additional_word}"
             else:
-                distance_part = "Unknown"
-                distance_str = "Unknown"
-                additional_word = None
+                distance_part = distance_str
+                additional_word = None  # No additional word found
+        else:
+            distance_part = "Unknown"
+            distance_str = "Unknown"
+            additional_word = None
+        
+        print(f"    Distance pattern found: '{distance_part}' from filename: {filename}")
+        
+        # Determine leak/noleak designation
+        if '_leak' in filename.lower():
+            leak_designation = "Leak"
+        elif '_noleak' in filename.lower():
+            leak_designation = "NoLeak"
+        else:
+            leak_designation = "Unknown"
+        
+        # Create worksheet name: "5m_sensor_Leak", "10m_test_NoLeak", etc.
+        worksheet_name = f"{distance_part}_{leak_designation}"
+        
+        # Ensure uniqueness by adding suffix if needed
+        original_worksheet_name = worksheet_name
+        counter = 1
+        while worksheet_name in used_worksheet_names:
+            worksheet_name = f"{original_worksheet_name}_{counter}"
+            counter += 1
+        
+        used_worksheet_names.add(worksheet_name)
+        sanitized_sheet_name = worksheet_name
+        
+        # Log the worksheet name creation
+        print(f"    Creating worksheet: '{sanitized_sheet_name}' for file: {os.path.basename(filename)}")
+        if additional_word:
+            print(f"      Enhanced naming: distance='{distance_str}', additional='{additional_word}'")
+        
+        # Store chart series info for this file
+        chart_series_info.append({
+            'filename': ListFileNames[iLoop],
+            'sheet_name': sanitized_sheet_name,
+            'data_points': N//2
+        })
+        
+        # Store analysis data for leak detection
+        analysis_data.append({
+            'filename': ListFileNames[iLoop],
+            'frequency': fftFreq[:N//2],
+            'psd_avg': psd_AVG[:N//2],
+            'fft_abs_min': fftAbs_MIN[:N//2],
+            'is_noleak': 'noleak' in ListFileNames[iLoop].lower()
+        })
+        
+        # Create worksheet in summary workbook for this file
+        summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
+        
+        # Write headers for summary worksheet
+        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR_dB', 'SNR_Distance_dB']
+        for col, header in enumerate(headers):
+            summaryWorksheet.write(0, col, header)
+        
+        # Write data to summary worksheet
+        for i in range(N//2): # //2 for only positive side plotting 
+            summaryWorksheet.write(i+1,0,sanitize_excel_value(time_Array[i]))
+            summaryWorksheet.write(i+1,1,sanitize_excel_value(data_Array[i]))
+            summaryWorksheet.write(i+1,2,sanitize_excel_value(fftFreq[i]))
+            summaryWorksheet.write(i+1,3,sanitize_excel_value(fft_AVG[i].real))
+            summaryWorksheet.write(i+1,4,sanitize_excel_value(fft_AVG[i].imag))
+            summaryWorksheet.write(i+1,5,sanitize_excel_value(fftAbs_AVG[i]))
+            summaryWorksheet.write(i+1,6,sanitize_excel_value(fft_MIN[i].real))
+            summaryWorksheet.write(i+1,7,sanitize_excel_value(fft_MIN[i].imag))
+            summaryWorksheet.write(i+1,8,sanitize_excel_value(fftAbs_MIN[i]))
+            summaryWorksheet.write(i+1,9,sanitize_excel_value(psd_AVG[i]))
+            summaryWorksheet.write(i+1,10,sanitize_excel_value(snr_dB[i]))
+            summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_distance_dB[i]))
             
-            print(f"    Distance pattern found: '{distance_part}' from filename: {filename}")
-            
-            # Determine leak/noleak designation
-            if '_leak' in filename.lower():
-                leak_designation = "Leak"
-            elif '_noleak' in filename.lower():
-                leak_designation = "NoLeak"
-            else:
-                leak_designation = "Unknown"
-            
-            # Create worksheet name: "5m_sensor_Leak", "10m_test_NoLeak", etc.
-            worksheet_name = f"{distance_part}_{leak_designation}"
-            
-            # Ensure uniqueness by adding suffix if needed
-            original_worksheet_name = worksheet_name
-            counter = 1
-            while worksheet_name in used_worksheet_names:
-                worksheet_name = f"{original_worksheet_name}_{counter}"
-                counter += 1
-            
-            used_worksheet_names.add(worksheet_name)
-            sanitized_sheet_name = worksheet_name
-            
-            # Log the worksheet name creation
-            print(f"    Creating worksheet: '{sanitized_sheet_name}' for file: {os.path.basename(filename)}")
-            if additional_word:
-                print(f"      Enhanced naming: distance='{distance_str}', additional='{additional_word}'")
-            
-            # Store chart series info for this file
-            chart_series_info.append({
-                'filename': ListFileNames[iLoop],
-                'sheet_name': sanitized_sheet_name,
-                'data_points': N//2
-            })
-            
-            # Store analysis data for leak detection
-            analysis_data.append({
-                'filename': ListFileNames[iLoop],
-                'frequency': fftFreq[:N//2],
-                'psd_avg': psd_AVG[:N//2],
-                'fft_abs_min': fftAbs_MIN[:N//2],
-                'is_noleak': 'noleak' in ListFileNames[iLoop].lower()
-            })
-            
-            # Create worksheet in summary workbook for this file
-            summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
-            
-            # Write headers for summary worksheet
-            headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR_dB', 'SNR_Distance_dB']
-            for col, header in enumerate(headers):
-                summaryWorksheet.write(0, col, header)
-            
-            # Write data to summary worksheet
-            for i in range(N//2): # //2 for only positive side plotting 
-                summaryWorksheet.write(i+1,0,sanitize_excel_value(time_Array[i]))
-                summaryWorksheet.write(i+1,1,sanitize_excel_value(data_Array[i]))
-                summaryWorksheet.write(i+1,2,sanitize_excel_value(fftFreq[i]))
-                summaryWorksheet.write(i+1,3,sanitize_excel_value(fft_AVG[i].real))
-                summaryWorksheet.write(i+1,4,sanitize_excel_value(fft_AVG[i].imag))
-                summaryWorksheet.write(i+1,5,sanitize_excel_value(fftAbs_AVG[i]))
-                summaryWorksheet.write(i+1,6,sanitize_excel_value(fft_MIN[i].real))
-                summaryWorksheet.write(i+1,7,sanitize_excel_value(fft_MIN[i].imag))
-                summaryWorksheet.write(i+1,8,sanitize_excel_value(fftAbs_MIN[i]))
-                summaryWorksheet.write(i+1,9,sanitize_excel_value(psd_AVG[i]))
-                summaryWorksheet.write(i+1,10,sanitize_excel_value(snr_dB[i]))
-                summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_distance_dB[i]))
-                
-            iLoop = iLoop + 1
+        iLoop = iLoop + 1
     
     # Leak Detection Functions (improved from reference code)
     def detect_leak_statistical(leak_psd, noleak_baseline, confidence_factor=3):
