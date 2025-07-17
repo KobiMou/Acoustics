@@ -1148,6 +1148,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             'name_font': {'size': 12},
             'num_font': {'size': 12}
         })
+        chartSNRFFT.set_size({'width': 1400, 'height': 700})
         chartSNRFFT.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
         chartSNRFFT.set_legend({'font': {'size': 12}})
         
@@ -1215,6 +1216,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             'name_font': {'size': 12},
             'num_font': {'size': 12}
         })
+        chartSNRFFTFile.set_size({'width': 1400, 'height': 700})
         chartSNRFFTFile.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
         chartSNRFFTFile.set_legend({'font': {'size': 12}})
         
