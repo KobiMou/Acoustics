@@ -121,6 +121,28 @@ def sanitize_excel_value(value, default=0):
         return default
 
 
+def is_noleak_measurement(filename):
+    """
+    Determine if a measurement is a NoLeak baseline measurement
+    More robust than simple substring matching
+    """
+    filename_lower = filename.lower()
+    
+    # Check for explicit noleak indicators
+    noleak_indicators = ['_noleak', 'noleak_', 'no_leak', 'baseline', 'background']
+    
+    for indicator in noleak_indicators:
+        if indicator in filename_lower:
+            # Check for leak indicators that would override noleak
+            leak_indicators = ['_leak', 'leak_', 'leakage']
+            for leak_indicator in leak_indicators:
+                if leak_indicator in filename_lower:
+                    return False  # Leak indicator overrides noleak
+            return True
+    
+    return False
+
+
 def extract_audio_segments(wav_file_path, segment_type='leak'):
     """
     Extract audio segments from WAV file
@@ -379,13 +401,25 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         })
         
         # Store analysis data for leak detection
+        # Use enhanced NoLeak classification (can be toggled back to simple method if needed)
+        use_enhanced_classification = True
+        
+        if use_enhanced_classification:
+            is_noleak_flag = is_noleak_measurement(ListFileNames[iLoop])
+        else:
+            is_noleak_flag = 'noleak' in ListFileNames[iLoop].lower()
+        
         analysis_data.append({
             'filename': ListFileNames[iLoop],
             'frequency': fftFreq[:N//2],
             'psd_avg': psd_AVG[:N//2],
             'fft_abs_min': fftAbs_MIN[:N//2],
-            'is_noleak': 'noleak' in ListFileNames[iLoop].lower()
+            'is_noleak': is_noleak_flag
         })
+        
+        # Debug logging for NoLeak classification
+        if is_noleak_flag:
+            print(f"    Classified as NoLeak: {os.path.basename(ListFileNames[iLoop])}")
         
         # Create worksheet in summary workbook for this file
         summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
@@ -642,6 +676,10 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                         'baseline_available': False
                     }
                 continue
+            
+            # Debug logging for leak detection baseline count
+            print(f"Leak Detection - Distance {distance}m - NoLeak baseline files: {[data['filename'] for data in group['noleak']]}")
+            print(f"Leak Detection - Distance {distance}m - Baseline count: {len(group['noleak'])}")
             
             # Create distance-specific baseline
             noleak_baseline = np.vstack([data['psd_avg'] for data in group['noleak']])
@@ -972,14 +1010,22 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             # Calculate distance-specific SNR for each group
             for distance, group in distance_groups.items():
                 if group['noleak']:
+                    # Debug logging for baseline count investigation
+                    print(f"Distance {distance}m - NoLeak files: {[data['filename'] for data in group['noleak']]}")
+                    print(f"Distance {distance}m - Baseline count: {len(group['noleak'])}")
+                    print(f"Distance {distance}m - Total measurements: {len(group['all_measurements'])}")
                     # Create distance-specific noise floor
                     distance_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
                     distance_noise_floor = np.maximum(distance_noise_floor, np.finfo(float).eps)
                     
                     # Calculate SNR for all measurements at this distance
                     for data in group['all_measurements']:
-                        # Calculate distance-specific SNR in dB
-                        snr_distance_dB = 10 * np.log10(data['psd_avg'] / distance_noise_floor)
+                        if data['is_noleak']:
+                            # NoLeak measurements should have 0 dB SNR against their own baseline
+                            snr_distance_dB = np.zeros_like(data['psd_avg'])
+                        else:
+                            # Calculate distance-specific SNR in dB for potential leak measurements
+                            snr_distance_dB = 10 * np.log10(data['psd_avg'] / distance_noise_floor)
                         
                         # Update the worksheet with distance-specific SNR values
                         sheet_name = data['filename']
