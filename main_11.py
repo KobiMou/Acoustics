@@ -1605,8 +1605,11 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
             distance_match = re.search(r'(\d+)m', measurement['filename'])
             distance = int(distance_match.group(1)) if distance_match else 0
             
+            # Use base filename for consistency
+            base_filename = os.path.basename(measurement['filename'])
+            
             for band_name, freq_min, freq_max in frequency_bands:
-                combination = (measurement['filename'], distance, band_name)
+                combination = (base_filename, distance, band_name)
                 measurement_band_combinations.append(combination)
     
     # Write headers - basic info columns followed by folder SNR columns
@@ -1621,7 +1624,7 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
     folder_snr_data = {}
     for folder_name in sorted_folders:
         folder_data = folder_groups[folder_name]
-        if not folder_data['noleak']:
+        if not folder_data['noleak'] or not folder_data['leak']:
             continue
         
         # Calculate folder-specific FFT noise floor
@@ -1643,13 +1646,16 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
                 signal = measurement['fft_abs_min']
                 snr_values = signal / folder_noise_floor
                 
+                # Use base filename for key (remove folder-specific path info)
+                base_filename = os.path.basename(measurement['filename'])
+                
                 for band_name, freq_min, freq_max in frequency_bands:
                     # Find frequency indices for this band
                     band_mask = (freq >= freq_min) & (freq <= freq_max)
                     
                     if np.any(band_mask):
                         band_snr = np.mean(snr_values[band_mask])
-                        key = (measurement['filename'], band_name)
+                        key = (base_filename, band_name)
                         folder_snr_data[folder_name][key] = band_snr
     
     # Write data rows
@@ -1660,10 +1666,13 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
         worksheet.write(row, 1, distance)
         worksheet.write(row, 2, band_name)
         
+        # Use base filename for consistent lookup
+        base_measurement_name = os.path.basename(measurement_name)
+        
         # Write SNR values for each folder
         for col_idx, folder_name in enumerate(sorted_folders):
             if folder_name in folder_snr_data:
-                key = (measurement_name, band_name)
+                key = (base_measurement_name, band_name)
                 if key in folder_snr_data[folder_name]:
                     snr_value = folder_snr_data[folder_name][key]
                     worksheet.write(row, 3 + col_idx, round(snr_value, 3))
