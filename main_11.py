@@ -178,15 +178,10 @@ def process_wav_files_in_folder(folder_path):
     """Process all WAV files in a folder and extract leak/noleak segments"""
     all_wav_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.wav')]
     
-    # Filter WAV files to only include those with distance pattern (number + "m")
-    wav_files = []
-    for f in all_wav_files:
-        if re.search(r'\d+m', f):
-            wav_files.append(f)
-        else:
-            print(f"  Skipping {f} - no distance pattern found (expecting format like '5m', '10m', etc.)")
+    # Process all WAV files (no distance pattern requirement for sensor-specific analysis)
+    wav_files = all_wav_files
     
-    print(f"  Found {len(wav_files)} WAV files with distance pattern (out of {len(all_wav_files)} total)")
+    print(f"  Found {len(wav_files)} WAV files to process")
     
     processed_data = []
     
@@ -219,12 +214,12 @@ def process_wav_files_in_folder(folder_path):
 # Process all subfolders
 print(f"Starting audio analysis from: {path}")
 print(f"Found {len(subfolders)} subfolders to process")
-print(f"Note: Only processing WAV files with distance pattern (e.g., 'sensor_5m.wav', 'test_10m.wav')")
-print(f"      Additional words after distance are included in worksheet names:")
-print(f"      - 'sensor_5m_leak' -> '5m_Leak'")
-print(f"      - 'sensor_5m_front_leak' -> '5m_front_Leak'")
-print(f"      - 'test_10m_sensor_noleak' -> '10m_sensor_NoLeak'")
-print(f"      Files without distance pattern (e.g., 'test.wav', 'background.wav') will be ignored")
+print(f"Note: Processing all WAV files for sensor-specific analysis")
+print(f"      Each sensor data should be in its own WAV file")
+print(f"      Files will be analyzed sensor-specifically:")
+print(f"      - 'sensor1.wav' -> 'sensor1_leak' and 'sensor1_noleak'")
+print(f"      - 'sensor2.wav' -> 'sensor2_leak' and 'sensor2_noleak'")
+print(f"      Each sensor's leak detection uses only its own NoLeak baseline")
 
 total_wav_files = 0
 total_segments = 0
@@ -610,50 +605,49 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     # Perform leak detection analysis
     leak_detection_results = analyze_leak_detection(analysis_data)
     
-    def analyze_leak_detection_distance_specific(analysis_data):
-        """Analyze leak detection using distance-specific noise floors"""
+    def analyze_leak_detection_sensor_specific(analysis_data):
+        """Analyze leak detection using sensor-specific noise floors"""
         
-        # Group data by distance
-        distance_groups = {}
+        # Group data by sensor
+        sensor_groups = {}
         
         for data in analysis_data:
-            # Extract distance from filename
-            match = re.search(r'(\d+)m', data['filename'])
-            if match:
-                distance = int(match.group(1))
-                if distance not in distance_groups:
-                    distance_groups[distance] = {'noleak': [], 'potential_leaks': []}
-                
-                if data['is_noleak']:
-                    distance_groups[distance]['noleak'].append(data)
-                else:
-                    distance_groups[distance]['potential_leaks'].append(data)
+            # Extract sensor identifier from filename (everything before _leak or _noleak)
+            base_filename = data['filename'].replace('_leak', '').replace('_noleak', '')
+            
+            if base_filename not in sensor_groups:
+                sensor_groups[base_filename] = {'noleak': [], 'potential_leaks': []}
+            
+            if data['is_noleak']:
+                sensor_groups[base_filename]['noleak'].append(data)
+            else:
+                sensor_groups[base_filename]['potential_leaks'].append(data)
         
-        # Analyze each distance group
+        # Analyze each sensor group
         results = {}
         
-        for distance, group in distance_groups.items():
+        for sensor_id, group in sensor_groups.items():
             if not group['noleak']:
-                # No NoLeak baseline for this distance
+                # No NoLeak baseline for this sensor
                 for leak_data in group['potential_leaks']:
                     results[leak_data['filename']] = {
-                        'error': f'No NoLeak baseline available for {distance}m distance',
-                        'distance': distance,
+                        'error': f'No NoLeak baseline available for sensor {sensor_id}',
+                        'sensor_id': sensor_id,
                         'baseline_available': False
                     }
                 continue
             
-            # Create distance-specific baseline
+            # Create sensor-specific baseline
             noleak_baseline = np.vstack([data['psd_avg'] for data in group['noleak']])
             
-            # Analyze potential leaks at this distance
+            # Analyze potential leaks for this sensor
             for leak_data in group['potential_leaks']:
                 detection_result = calculate_leak_detection_score(
                     leak_data['frequency'], leak_data['psd_avg'], noleak_baseline
                 )
                 
-                # Add distance-specific information
-                detection_result['distance'] = distance
+                # Add sensor-specific information
+                detection_result['sensor_id'] = sensor_id
                 detection_result['baseline_measurements'] = len(group['noleak'])
                 detection_result['baseline_files'] = [data['filename'] for data in group['noleak']]
                 detection_result['baseline_available'] = True
@@ -662,8 +656,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         
         return results
     
-    # Perform distance-specific leak detection analysis
-    leak_detection_distance_specific = analyze_leak_detection_distance_specific(analysis_data)
+    # Perform sensor-specific leak detection analysis
+    leak_detection_sensor_specific = analyze_leak_detection_sensor_specific(analysis_data)
     
     # Create plot worksheet
     if chart_series_info:
@@ -1137,116 +1131,116 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 leakDetectionWorksheet.write(row, 0, 'Average Composite Score:')
                 leakDetectionWorksheet.write(row, 1, round(avg_composite, 1))
 
-        # Create Distance-Specific Leak Detection Results worksheet
-        if leak_detection_distance_specific and isinstance(leak_detection_distance_specific, dict):
-            distance_detection_sheet_name = 'Distance_Specific_Detection'
+        # Create Sensor-Specific Leak Detection Results worksheet
+        if leak_detection_sensor_specific and isinstance(leak_detection_sensor_specific, dict):
+            sensor_detection_sheet_name = 'Sensor_Specific_Detection'
             counter = 1
-            while distance_detection_sheet_name in used_worksheet_names:
-                distance_detection_sheet_name = f'Distance_Specific_Detection_{counter}'
+            while sensor_detection_sheet_name in used_worksheet_names:
+                sensor_detection_sheet_name = f'Sensor_Specific_Detection_{counter}'
                 counter += 1
-            used_worksheet_names.add(distance_detection_sheet_name)
-            distanceDetectionWorksheet = summaryWorkbook.add_worksheet(distance_detection_sheet_name)
+            used_worksheet_names.add(sensor_detection_sheet_name)
+            sensorDetectionWorksheet = summaryWorkbook.add_worksheet(sensor_detection_sheet_name)
             
             # Write headers
-            headers = ['Measurement', 'Distance (m)', 'Baseline Available', 'Baseline Count', 'Baseline Files', 
+            headers = ['Measurement', 'Sensor ID', 'Baseline Available', 'Baseline Count', 'Baseline Files', 
                       'Leak Probability', 'Composite Score', 'Statistical Score', 'Frequency Band Score', 
                       'Power Ratio Score', 'Max Power Increase (dB)', 'Detection Ratio (%)', 'Max Exceedance Ratio']
             
             for col, header in enumerate(headers):
-                distanceDetectionWorksheet.write(0, col, header)
+                sensorDetectionWorksheet.write(0, col, header)
             
             # Write detection results
             row = 1
-            for filename, result in leak_detection_distance_specific.items():
-                distanceDetectionWorksheet.write(row, 0, filename)
-                distanceDetectionWorksheet.write(row, 1, result['distance'])
+            for filename, result in leak_detection_sensor_specific.items():
+                sensorDetectionWorksheet.write(row, 0, filename)
+                sensorDetectionWorksheet.write(row, 1, result['sensor_id'])
                 
                 if not result.get('baseline_available', True):
                     # Handle case where no baseline is available
-                    distanceDetectionWorksheet.write(row, 2, 'NO')
-                    distanceDetectionWorksheet.write(row, 3, 0)
-                    distanceDetectionWorksheet.write(row, 4, 'N/A')
-                    distanceDetectionWorksheet.write(row, 5, result.get('error', 'No baseline'))
+                    sensorDetectionWorksheet.write(row, 2, 'NO')
+                    sensorDetectionWorksheet.write(row, 3, 0)
+                    sensorDetectionWorksheet.write(row, 4, 'N/A')
+                    sensorDetectionWorksheet.write(row, 5, result.get('error', 'No baseline'))
                     for col in range(6, len(headers)):
-                        distanceDetectionWorksheet.write(row, col, 'N/A')
+                        sensorDetectionWorksheet.write(row, col, 'N/A')
                 else:
                     # Normal case with baseline available
-                    distanceDetectionWorksheet.write(row, 2, 'YES')
-                    distanceDetectionWorksheet.write(row, 3, result['baseline_measurements'])
-                    distanceDetectionWorksheet.write(row, 4, ', '.join(result['baseline_files']))
-                    distanceDetectionWorksheet.write(row, 5, result['leak_probability'])
-                    distanceDetectionWorksheet.write(row, 6, round(result['composite_score'], 1))
-                    distanceDetectionWorksheet.write(row, 7, round(result['individual_scores']['statistical'], 1))
-                    distanceDetectionWorksheet.write(row, 8, round(result['individual_scores']['frequency_bands'], 1))
-                    distanceDetectionWorksheet.write(row, 9, round(result['individual_scores']['power_ratio'], 1))
-                    distanceDetectionWorksheet.write(row, 10, round(result['detailed_results']['power_ratio']['max_power_increase_dB'], 1))
-                    distanceDetectionWorksheet.write(row, 11, round(result['detailed_results']['statistical']['detection_ratio'] * 100, 1))
-                    distanceDetectionWorksheet.write(row, 12, round(result['detailed_results']['statistical']['max_exceedance_ratio'], 2))
+                    sensorDetectionWorksheet.write(row, 2, 'YES')
+                    sensorDetectionWorksheet.write(row, 3, result['baseline_measurements'])
+                    sensorDetectionWorksheet.write(row, 4, ', '.join(result['baseline_files']))
+                    sensorDetectionWorksheet.write(row, 5, result['leak_probability'])
+                    sensorDetectionWorksheet.write(row, 6, round(result['composite_score'], 1))
+                    sensorDetectionWorksheet.write(row, 7, round(result['individual_scores']['statistical'], 1))
+                    sensorDetectionWorksheet.write(row, 8, round(result['individual_scores']['frequency_bands'], 1))
+                    sensorDetectionWorksheet.write(row, 9, round(result['individual_scores']['power_ratio'], 1))
+                    sensorDetectionWorksheet.write(row, 10, round(result['detailed_results']['power_ratio']['max_power_increase_dB'], 1))
+                    sensorDetectionWorksheet.write(row, 11, round(result['detailed_results']['statistical']['detection_ratio'] * 100, 1))
+                    sensorDetectionWorksheet.write(row, 12, round(result['detailed_results']['statistical']['max_exceedance_ratio'], 2))
                 
                 row += 1
             
-            # Add distance-specific frequency band analysis details
+            # Add sensor-specific frequency band analysis details
             row += 2
-            distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Frequency Band Analysis:')
+            sensorDetectionWorksheet.write(row, 0, 'Sensor-Specific Frequency Band Analysis:')
             row += 1
             
             # Headers for frequency band details
-            band_headers = ['Measurement', 'Distance (m)', 'Frequency Band', 'SNR Ratio', 'Z-Score', 'Leak Detected']
+            band_headers = ['Measurement', 'Sensor ID', 'Frequency Band', 'SNR Ratio', 'Z-Score', 'Leak Detected']
             for col, header in enumerate(band_headers):
-                distanceDetectionWorksheet.write(row, col, header)
+                sensorDetectionWorksheet.write(row, col, header)
             row += 1
             
             # Write frequency band details
-            for filename, result in leak_detection_distance_specific.items():
+            for filename, result in leak_detection_sensor_specific.items():
                 if result.get('baseline_available', True) and 'detailed_results' in result:
                     for band_name, band_result in result['detailed_results']['frequency_bands'].items():
-                        distanceDetectionWorksheet.write(row, 0, filename)
-                        distanceDetectionWorksheet.write(row, 1, result['distance'])
-                        distanceDetectionWorksheet.write(row, 2, band_name.replace('_', ' ').replace('band ', ''))
-                        distanceDetectionWorksheet.write(row, 3, round(band_result['snr_ratio'], 2))
-                        distanceDetectionWorksheet.write(row, 4, round(band_result['z_score'], 2))
-                        distanceDetectionWorksheet.write(row, 5, 'YES' if band_result['leak_detected'] else 'NO')
+                        sensorDetectionWorksheet.write(row, 0, filename)
+                        sensorDetectionWorksheet.write(row, 1, result['sensor_id'])
+                        sensorDetectionWorksheet.write(row, 2, band_name.replace('_', ' ').replace('band ', ''))
+                        sensorDetectionWorksheet.write(row, 3, round(band_result['snr_ratio'], 2))
+                        sensorDetectionWorksheet.write(row, 4, round(band_result['z_score'], 2))
+                        sensorDetectionWorksheet.write(row, 5, 'YES' if band_result['leak_detected'] else 'NO')
                         row += 1
             
-            # Add distance-specific summary statistics
+            # Add sensor-specific summary statistics
             row += 2
-            distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Detection Summary:')
+            sensorDetectionWorksheet.write(row, 0, 'Sensor-Specific Detection Summary:')
             row += 1
             
-            # Group results by distance for summary
-            distance_summary = {}
-            for filename, result in leak_detection_distance_specific.items():
-                distance = result['distance']
-                if distance not in distance_summary:
-                    distance_summary[distance] = {'high': 0, 'medium': 0, 'low': 0, 'no_baseline': 0, 'total': 0}
+            # Group results by sensor for summary
+            sensor_summary = {}
+            for filename, result in leak_detection_sensor_specific.items():
+                sensor_id = result['sensor_id']
+                if sensor_id not in sensor_summary:
+                    sensor_summary[sensor_id] = {'high': 0, 'medium': 0, 'low': 0, 'no_baseline': 0, 'total': 0}
                 
-                distance_summary[distance]['total'] += 1
+                sensor_summary[sensor_id]['total'] += 1
                 
                 if not result.get('baseline_available', True):
-                    distance_summary[distance]['no_baseline'] += 1
+                    sensor_summary[sensor_id]['no_baseline'] += 1
                 else:
                     prob = result['leak_probability']
                     if prob == 'HIGH':
-                        distance_summary[distance]['high'] += 1
+                        sensor_summary[sensor_id]['high'] += 1
                     elif prob == 'MEDIUM':
-                        distance_summary[distance]['medium'] += 1
+                        sensor_summary[sensor_id]['medium'] += 1
                     else:
-                        distance_summary[distance]['low'] += 1
+                        sensor_summary[sensor_id]['low'] += 1
             
-            # Write summary by distance
-            summary_headers = ['Distance (m)', 'Total Measurements', 'High Prob', 'Medium Prob', 'Low Prob', 'No Baseline']
+            # Write summary by sensor
+            summary_headers = ['Sensor ID', 'Total Measurements', 'High Prob', 'Medium Prob', 'Low Prob', 'No Baseline']
             for col, header in enumerate(summary_headers):
-                distanceDetectionWorksheet.write(row, col, header)
+                sensorDetectionWorksheet.write(row, col, header)
             row += 1
             
-            for distance in sorted(distance_summary.keys()):
-                summary = distance_summary[distance]
-                distanceDetectionWorksheet.write(row, 0, distance)
-                distanceDetectionWorksheet.write(row, 1, summary['total'])
-                distanceDetectionWorksheet.write(row, 2, summary['high'])
-                distanceDetectionWorksheet.write(row, 3, summary['medium'])
-                distanceDetectionWorksheet.write(row, 4, summary['low'])
-                distanceDetectionWorksheet.write(row, 5, summary['no_baseline'])
+            for sensor_id in sorted(sensor_summary.keys()):
+                summary = sensor_summary[sensor_id]
+                sensorDetectionWorksheet.write(row, 0, sensor_id)
+                sensorDetectionWorksheet.write(row, 1, summary['total'])
+                sensorDetectionWorksheet.write(row, 2, summary['high'])
+                sensorDetectionWorksheet.write(row, 3, summary['medium'])
+                sensorDetectionWorksheet.write(row, 4, summary['low'])
+                sensorDetectionWorksheet.write(row, 5, summary['no_baseline'])
                 row += 1
     
     # Close workbook for this folder
@@ -1263,14 +1257,13 @@ for subfolder in subfolders:
     subfolder_path = os.path.join(path, subfolder)
     all_wav_files = [f for f in os.listdir(subfolder_path) if f.lower().endswith('.wav')]
     
-    # Count only WAV files with distance pattern
-    wav_files_with_distance = [f for f in all_wav_files if re.search(r'\d+m', f)]
-    total_wav_files += len(wav_files_with_distance)
+    # Count all WAV files for sensor-specific analysis
+    total_wav_files += len(all_wav_files)
     
-    print(f"\nProcessing folder: {subfolder} ({len(wav_files_with_distance)} WAV files with distance pattern)")
+    print(f"\nProcessing folder: {subfolder} ({len(all_wav_files)} WAV files)")
     
-    if len(wav_files_with_distance) == 0:
-        print(f"  No WAV files with distance pattern found in {subfolder} - skipping folder")
+    if len(all_wav_files) == 0:
+        print(f"  No WAV files found in {subfolder} - skipping folder")
         continue
     
     # Process WAV files in this subfolder
@@ -1284,11 +1277,11 @@ print(f"\n" + "="*50)
 print(f"🎵 ANALYSIS COMPLETE")
 print(f"="*50)
 print(f"- Total subfolders scanned: {len(subfolders)}")
-print(f"- Total WAV files with distance pattern processed: {total_wav_files}")
+print(f"- Total WAV files processed: {total_wav_files}")
 print(f"- Total segments extracted: {total_segments}")
-distance_pattern = r'\d+m'
-print(f"- Analysis files created: {len([f for f in subfolders if len([x for x in os.listdir(os.path.join(path, f)) if x.lower().endswith('.wav') and re.search(distance_pattern, x)]) > 0])}")
-print(f"\nNote: Only WAV files containing distance pattern (number + 'm') were processed.")
+print(f"- Analysis files created: {len([f for f in subfolders if len([x for x in os.listdir(os.path.join(path, f)) if x.lower().endswith('.wav')]) > 0])}")
+print(f"\nNote: All WAV files were processed for sensor-specific analysis.")
 print(f"Each folder with valid files now contains its own analysis summary file.")
+print(f"Each sensor's leak detection uses only its own NoLeak baseline data.")
 
 print('OK')

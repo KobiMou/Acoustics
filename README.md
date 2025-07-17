@@ -1,7 +1,7 @@
 # Audio Analysis for Leak Detection
 
 ## Overview
-This code processes WAV audio files to analyze acoustic data for leak detection. It extracts specific segments from each WAV file and performs FFT analysis to identify patterns that may indicate leaks. **Each folder is analyzed separately with its own complete analysis file saved within the same folder.**
+This code processes WAV audio files to analyze acoustic data for leak detection. It extracts specific segments from each WAV file and performs FFT analysis to identify patterns that may indicate leaks. **Each folder is analyzed separately with its own complete analysis file saved within the same folder.** The analysis is now **sensor-specific**, meaning each sensor's data (in its own WAV file) is analyzed independently using only its own NoLeak baseline.
 
 ## Requirements
 Install the required dependencies:
@@ -14,15 +14,17 @@ The code expects the following directory structure:
 ```
 audio_data/
 ├── folder1/
-│   ├── file1.wav
-│   ├── file2.wav
+│   ├── sensor1.wav
+│   ├── sensor2.wav
 │   └── folder1_analysis_summary.xlsx  ← Generated
 ├── folder2/
-│   ├── file3.wav
-│   ├── file4.wav
+│   ├── sensor1.wav
+│   ├── sensor2.wav
 │   └── folder2_analysis_summary.xlsx  ← Generated
 └── ...
 ```
+
+**Important**: Each sensor should have its own WAV file. The sensor-specific analysis ensures that each sensor's leak detection uses only its own NoLeak baseline data, preventing cross-contamination between sensors.
 
 ## Audio File Processing
 For each WAV file, the code extracts two segments:
@@ -61,11 +63,17 @@ path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\audio_data'
 - No mixing of data between folders
 - Easier organization and sharing of results
 
+### **Sensor-Specific Analysis**
+- Each sensor's data is in its own WAV file
+- Each sensor's leak detection uses only its own NoLeak baseline
+- No cross-contamination between sensors at the same location
+- Independent analysis ensures accurate sensor-specific results
+
 ### **Advanced Analysis**
 - **Automatic Segment Extraction**: Processes both leak and noleak segments from each WAV file
 - **FFT Analysis**: Applies Hanning window and calculates Power Spectral Density
 - **SNR Calculation**: Signal-to-Noise Ratio analysis
-- **Leak Detection**: Multiple algorithms for detecting acoustic leaks
+- **Sensor-Specific Leak Detection**: Each sensor's leak detection uses only its own NoLeak baseline
 - **Visualization**: Automatic chart generation in Excel format
 - **Error Handling**: Robust processing with detailed error messages
 
@@ -104,11 +112,12 @@ audio_data/
 Each `_analysis_summary.xlsx` file contains:
 - **Individual worksheets** for each segment (sensor1_leak, sensor1_noleak, sensor2_leak, sensor2_noleak)
 - **Plot worksheets** with frequency analysis charts
-- **Leak Detection Results** specific to that folder
+- **Sensor-Specific Leak Detection Results** - each sensor analyzed independently
 - **Summary statistics** for that folder's data
 
 This approach makes it easy to:
 - Share results folder by folder
-- Analyze data in isolation
-- Compare results between different test conditions
+- Analyze each sensor independently without cross-contamination
+- Compare results between different sensors and test conditions
 - Maintain organized project structure
+- Ensure each sensor's leak detection uses only its own baseline data
