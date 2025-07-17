@@ -1422,6 +1422,9 @@ def extract_number_before_m(filename):
     match = re.search(r'(\d+)m', filename)
     return int(match.group(1)) if match else float('inf')
 
+# Store all folders' analysis data for summary comparison
+all_folders_data = {}
+
 # Main processing loop - process each folder separately
 for subfolder in subfolders:
     subfolder_path = os.path.join(path, subfolder)
@@ -1441,8 +1444,289 @@ for subfolder in subfolders:
     folder_data = process_wav_files_in_folder(subfolder_path)
     total_segments += len(folder_data)
     
+    # Store folder data for summary comparison
+    all_folders_data[subfolder] = folder_data
+    
     # Process and analyze this folder's data
     process_folder_analysis(subfolder_path, subfolder, folder_data)
+
+# Create summary comparison file
+def create_summary_comparison(all_folders_data, base_path):
+    """Create a summary comparison Excel file across all subfolders"""
+    
+    if not all_folders_data:
+        print("No data available for summary comparison")
+        return
+    
+    # Create summary comparison file
+    summary_path = os.path.join(base_path, "summary_comparison.xlsx")
+    summaryComparisonWorkbook = xlsxwriter.Workbook(summary_path, {'nan_inf_to_errors': True})
+    
+    print(f"\nCreating summary comparison file: {summary_path}")
+    
+    # Collect all analysis data from all folders
+    all_analysis_data = []
+    folder_mapping = {}  # Maps filename to folder name
+    
+    for folder_name, folder_data in all_folders_data.items():
+        for fName, DataFrame in folder_data:
+            # Process the data similar to individual folder processing
+            DataFrameSize = len(DataFrame)
+            
+            if n_AVG <= DataFrameSize//n_samples:
+                time_Array = DataFrame[0][0:n_samples].to_numpy()
+                
+                N = len(time_Array)
+                
+                # Calculate sampling rate
+                listSampleRate = []
+                for i in range(1, N):
+                    sampleRate = time_Array[i] - time_Array[i-1]
+                    listSampleRate.append(sampleRate)
+                
+                st = sum(listSampleRate) / len(listSampleRate)
+                st = round(st, 9)
+                fs = 1 / st
+                
+                fftFreq = np.fft.fftfreq(N, st)
+                hanning_window = np.hanning(N)
+                
+                # Process FFT data
+                fft = []
+                for j in range(n_AVG):
+                    data_Array = DataFrame[1][j*n_samples:(j+1)*n_samples].to_numpy()
+                    data_Array = np.transpose(data_Array)
+                    windowed_data = data_Array * hanning_window
+                    fft.append(np.fft.fft(windowed_data))
+                
+                fftAbs = np.abs(fft)/N*2*2
+                fftAbs_MIN = np.min(fftAbs, axis=0)
+                
+                # Calculate PSD
+                hanning_correction = 8/3
+                psd = []
+                for j in range(n_AVG):
+                    psd_single = (np.abs(fft[j])**2) / (N * fs) * hanning_correction
+                    psd.append(psd_single)
+                
+                psd_AVG = np.mean(psd, axis=0)
+                
+                # Store analysis data
+                analysis_entry = {
+                    'folder': folder_name,
+                    'filename': fName,
+                    'frequency': fftFreq[:N//2],
+                    'psd_avg': psd_AVG[:N//2],
+                    'fft_abs_min': fftAbs_MIN[:N//2],
+                    'is_noleak': 'noleak' in fName.lower()
+                }
+                
+                all_analysis_data.append(analysis_entry)
+                folder_mapping[fName] = folder_name
+    
+    # Create FFT Bands SNR Comparison Table
+    create_fft_bands_snr_comparison(summaryComparisonWorkbook, all_analysis_data)
+    
+    # Create overall summary statistics
+    create_overall_summary_statistics(summaryComparisonWorkbook, all_analysis_data)
+    
+    # Close the workbook
+    summaryComparisonWorkbook.close()
+    print(f"Summary comparison file created successfully: {summary_path}")
+
+def create_fft_bands_snr_comparison(workbook, all_analysis_data):
+    """Create FFT bands SNR comparison table across all folders"""
+    
+    # Create worksheet
+    worksheet = workbook.add_worksheet('FFT_Bands_SNR_Comparison')
+    
+    # Define frequency bands for analysis
+    frequency_bands = [
+        ('Low', 0, 100),
+        ('Mid-Low', 100, 500),
+        ('Mid', 500, 1000),
+        ('Mid-High', 1000, 2000),
+        ('High', 2000, 5000),
+        ('Very High', 5000, 10000)
+    ]
+    
+    # Group data by folder
+    folder_groups = {}
+    for data in all_analysis_data:
+        folder = data['folder']
+        if folder not in folder_groups:
+            folder_groups[folder] = {'noleak': [], 'leak': []}
+        
+        if data['is_noleak']:
+            folder_groups[folder]['noleak'].append(data)
+        else:
+            folder_groups[folder]['leak'].append(data)
+    
+    # Write headers
+    headers = ['Folder', 'Distance', 'Measurement Type', 'File Name']
+    for band_name, _, _ in frequency_bands:
+        headers.append(f'{band_name} Band SNR')
+    
+    for col, header in enumerate(headers):
+        worksheet.write(0, col, header)
+    
+    row = 1
+    
+    # Process each folder
+    for folder_name, folder_data in folder_groups.items():
+        if not folder_data['noleak']:
+            continue  # Skip if no noleak data
+        
+        # Calculate folder-specific FFT noise floor
+        folder_fft_noise = []
+        for noleak_data in folder_data['noleak']:
+            folder_fft_noise.append(noleak_data['fft_abs_min'])
+        
+        if folder_fft_noise:
+            folder_noise_floor = np.mean(np.vstack(folder_fft_noise), axis=0)
+            folder_noise_floor = np.maximum(folder_noise_floor, np.finfo(float).eps)
+            
+            # Process all measurements in this folder
+            all_measurements = folder_data['noleak'] + folder_data['leak']
+            
+            for measurement in all_measurements:
+                # Extract distance from filename
+                distance_match = re.search(r'(\d+)m', measurement['filename'])
+                distance = f"{distance_match.group(1)}m" if distance_match else "Unknown"
+                
+                # Determine measurement type
+                measurement_type = "NoLeak" if measurement['is_noleak'] else "Leak"
+                
+                # Calculate SNR for each frequency band
+                freq = measurement['frequency']
+                signal = measurement['fft_abs_min']
+                snr_values = signal / folder_noise_floor
+                
+                # Write basic info
+                worksheet.write(row, 0, folder_name)
+                worksheet.write(row, 1, distance)
+                worksheet.write(row, 2, measurement_type)
+                worksheet.write(row, 3, measurement['filename'])
+                
+                # Calculate and write band SNR values
+                for col_idx, (band_name, freq_min, freq_max) in enumerate(frequency_bands):
+                    # Find frequency indices for this band
+                    band_mask = (freq >= freq_min) & (freq <= freq_max)
+                    
+                    if np.any(band_mask):
+                        band_snr = np.mean(snr_values[band_mask])
+                        worksheet.write(row, 4 + col_idx, round(band_snr, 3))
+                    else:
+                        worksheet.write(row, 4 + col_idx, 'N/A')
+                
+                row += 1
+    
+    # Add summary statistics
+    row += 2
+    worksheet.write(row, 0, 'SUMMARY STATISTICS')
+    row += 1
+    
+    # Calculate folder averages
+    worksheet.write(row, 0, 'Folder Averages:')
+    row += 1
+    
+    for folder_name, folder_data in folder_groups.items():
+        if not folder_data['noleak']:
+            continue
+        
+        # Calculate folder-specific FFT noise floor
+        folder_fft_noise = []
+        for noleak_data in folder_data['noleak']:
+            folder_fft_noise.append(noleak_data['fft_abs_min'])
+        
+        if folder_fft_noise:
+            folder_noise_floor = np.mean(np.vstack(folder_fft_noise), axis=0)
+            folder_noise_floor = np.maximum(folder_noise_floor, np.finfo(float).eps)
+            
+            # Calculate average SNR for leak measurements only
+            leak_measurements = folder_data['leak']
+            if leak_measurements:
+                worksheet.write(row, 0, f'{folder_name} (Leak Avg):')
+                
+                band_averages = []
+                for band_name, freq_min, freq_max in frequency_bands:
+                    band_snr_values = []
+                    
+                    for measurement in leak_measurements:
+                        freq = measurement['frequency']
+                        signal = measurement['fft_abs_min']
+                        snr_values = signal / folder_noise_floor
+                        
+                        band_mask = (freq >= freq_min) & (freq <= freq_max)
+                        if np.any(band_mask):
+                            band_snr = np.mean(snr_values[band_mask])
+                            band_snr_values.append(band_snr)
+                    
+                    if band_snr_values:
+                        avg_band_snr = np.mean(band_snr_values)
+                        worksheet.write(row, 4 + frequency_bands.index((band_name, freq_min, freq_max)), round(avg_band_snr, 3))
+                    else:
+                        worksheet.write(row, 4 + frequency_bands.index((band_name, freq_min, freq_max)), 'N/A')
+                
+                row += 1
+
+def create_overall_summary_statistics(workbook, all_analysis_data):
+    """Create overall summary statistics worksheet"""
+    
+    worksheet = workbook.add_worksheet('Overall_Summary')
+    
+    # Group data by folder
+    folder_stats = {}
+    for data in all_analysis_data:
+        folder = data['folder']
+        if folder not in folder_stats:
+            folder_stats[folder] = {'total_files': 0, 'noleak_files': 0, 'leak_files': 0, 'distances': set()}
+        
+        folder_stats[folder]['total_files'] += 1
+        
+        if data['is_noleak']:
+            folder_stats[folder]['noleak_files'] += 1
+        else:
+            folder_stats[folder]['leak_files'] += 1
+        
+        # Extract distance
+        distance_match = re.search(r'(\d+)m', data['filename'])
+        if distance_match:
+            folder_stats[folder]['distances'].add(distance_match.group(1))
+    
+    # Write headers
+    headers = ['Folder', 'Total Files', 'NoLeak Files', 'Leak Files', 'Distances Tested']
+    for col, header in enumerate(headers):
+        worksheet.write(0, col, header)
+    
+    row = 1
+    
+    # Write folder statistics
+    for folder_name, stats in folder_stats.items():
+        worksheet.write(row, 0, folder_name)
+        worksheet.write(row, 1, stats['total_files'])
+        worksheet.write(row, 2, stats['noleak_files'])
+        worksheet.write(row, 3, stats['leak_files'])
+        distances_str = ', '.join(sorted(stats['distances'], key=int)) + 'm'
+        worksheet.write(row, 4, distances_str)
+        row += 1
+    
+    # Add totals
+    row += 1
+    worksheet.write(row, 0, 'TOTALS:')
+    worksheet.write(row, 1, sum(stats['total_files'] for stats in folder_stats.values()))
+    worksheet.write(row, 2, sum(stats['noleak_files'] for stats in folder_stats.values()))
+    worksheet.write(row, 3, sum(stats['leak_files'] for stats in folder_stats.values()))
+    
+    # All unique distances
+    all_distances = set()
+    for stats in folder_stats.values():
+        all_distances.update(stats['distances'])
+    distances_str = ', '.join(sorted(all_distances, key=int)) + 'm'
+    worksheet.write(row, 4, distances_str)
+
+# Create the summary comparison file
+create_summary_comparison(all_folders_data, path)
 
 print(f"\n" + "="*50)
 print(f"🎵 ANALYSIS COMPLETE")
@@ -1452,7 +1736,9 @@ print(f"- Total WAV files with distance pattern processed: {total_wav_files}")
 print(f"- Total segments extracted: {total_segments}")
 distance_pattern = r'\d+m'
 print(f"- Analysis files created: {len([f for f in subfolders if len([x for x in os.listdir(os.path.join(path, f)) if x.lower().endswith('.wav') and re.search(distance_pattern, x)]) > 0])}")
+print(f"- Summary comparison file created: summary_comparison.xlsx")
 print(f"\nNote: Only WAV files containing distance pattern (number + 'm') were processed.")
 print(f"Each folder with valid files now contains its own analysis summary file.")
+print(f"The summary_comparison.xlsx file contains cross-folder FFT bands SNR analysis.")
 
 print('OK')
