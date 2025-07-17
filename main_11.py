@@ -391,7 +391,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR_dB', 'SNR_Distance_dB']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR_dB', 'SNR_File_dB']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
         
@@ -611,48 +611,51 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     leak_detection_results = analyze_leak_detection(analysis_data)
     
     def analyze_leak_detection_distance_specific(analysis_data):
-        """Analyze leak detection using distance-specific noise floors"""
+        """Analyze leak detection using file-specific noise floors"""
         
-        # Group data by distance
-        distance_groups = {}
+        # Group data by WAV file base name (without _leak/_noleak suffix)
+        wav_file_groups = {}
         
         for data in analysis_data:
-            # Extract distance from filename
-            match = re.search(r'(\d+)m', data['filename'])
-            if match:
-                distance = int(match.group(1))
-                if distance not in distance_groups:
-                    distance_groups[distance] = {'noleak': [], 'potential_leaks': []}
-                
-                if data['is_noleak']:
-                    distance_groups[distance]['noleak'].append(data)
-                else:
-                    distance_groups[distance]['potential_leaks'].append(data)
+            # Extract base filename without _leak/_noleak suffix
+            base_filename = re.sub(r'_(leak|noleak)$', '', data['filename'])
+            
+            if base_filename not in wav_file_groups:
+                wav_file_groups[base_filename] = {'noleak': [], 'potential_leaks': []}
+            
+            if data['is_noleak']:
+                wav_file_groups[base_filename]['noleak'].append(data)
+            else:
+                wav_file_groups[base_filename]['potential_leaks'].append(data)
         
-        # Analyze each distance group
+        # Analyze each WAV file group
         results = {}
         
-        for distance, group in distance_groups.items():
+        for base_filename, group in wav_file_groups.items():
+            # Extract distance from base filename
+            distance_match = re.search(r'(\d+)m', base_filename)
+            distance = int(distance_match.group(1)) if distance_match else 0
+            
             if not group['noleak']:
-                # No NoLeak baseline for this distance
+                # No NoLeak baseline for this WAV file
                 for leak_data in group['potential_leaks']:
                     results[leak_data['filename']] = {
-                        'error': f'No NoLeak baseline available for {distance}m distance',
+                        'error': f'No NoLeak baseline available for WAV file {base_filename}',
                         'distance': distance,
                         'baseline_available': False
                     }
                 continue
             
-            # Create distance-specific baseline
+            # Create WAV file-specific baseline (each WAV file uses only its own NoLeak data)
             noleak_baseline = np.vstack([data['psd_avg'] for data in group['noleak']])
             
-            # Analyze potential leaks at this distance
+            # Analyze potential leaks for this WAV file
             for leak_data in group['potential_leaks']:
                 detection_result = calculate_leak_detection_score(
                     leak_data['frequency'], leak_data['psd_avg'], noleak_baseline
                 )
                 
-                # Add distance-specific information
+                # Add WAV file-specific information
                 detection_result['distance'] = distance
                 detection_result['baseline_measurements'] = len(group['noleak'])
                 detection_result['baseline_files'] = [data['filename'] for data in group['noleak']]
@@ -943,45 +946,44 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Insert SNR chart into worksheet
         snrPlotWorksheet.insert_chart('A1', chartSNR)
 
-        # Create Distance-Specific SNR plot worksheet
-        snr_distance_sheet_name = 'SNR_Distance_Specific'
+        # Create File-Specific SNR plot worksheet
+        snr_distance_sheet_name = 'SNR_File_Specific'
         counter = 1
         while snr_distance_sheet_name in used_worksheet_names:
-            snr_distance_sheet_name = f'SNR_Distance_Specific_{counter}'
+            snr_distance_sheet_name = f'SNR_File_Specific_{counter}'
             counter += 1
         used_worksheet_names.add(snr_distance_sheet_name)
         snrDistanceWorksheet = summaryWorkbook.add_worksheet(snr_distance_sheet_name)
         
-        # Calculate distance-specific SNR data
+        # Calculate file-specific SNR data
         if analysis_data:
-            # Group data by distance
-            distance_groups = {}
+            # Group data by WAV file base name (without _leak/_noleak suffix)
+            wav_file_groups = {}
             
             for data in analysis_data:
-                # Extract distance from filename
-                match = re.search(r'(\d+)m', data['filename'])
-                if match:
-                    distance = int(match.group(1))
-                    if distance not in distance_groups:
-                        distance_groups[distance] = {'noleak': [], 'all_measurements': []}
-                    
-                    distance_groups[distance]['all_measurements'].append(data)
-                    if data['is_noleak']:
-                        distance_groups[distance]['noleak'].append(data)
+                # Extract base filename without _leak/_noleak suffix
+                base_filename = re.sub(r'_(leak|noleak)$', '', data['filename'])
+                
+                if base_filename not in wav_file_groups:
+                    wav_file_groups[base_filename] = {'noleak': [], 'all_measurements': []}
+                
+                wav_file_groups[base_filename]['all_measurements'].append(data)
+                if data['is_noleak']:
+                    wav_file_groups[base_filename]['noleak'].append(data)
             
-            # Calculate distance-specific SNR for each group
-            for distance, group in distance_groups.items():
+            # Calculate file-specific SNR for each WAV file group
+            for base_filename, group in wav_file_groups.items():
                 if group['noleak']:
-                    # Create distance-specific noise floor
-                    distance_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
-                    distance_noise_floor = np.maximum(distance_noise_floor, np.finfo(float).eps)
+                    # Create WAV file-specific noise floor (each WAV file uses only its own NoLeak data)
+                    wav_file_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
+                    wav_file_noise_floor = np.maximum(wav_file_noise_floor, np.finfo(float).eps)
                     
-                    # Calculate SNR for all measurements at this distance
+                    # Calculate SNR for all measurements from this WAV file
                     for data in group['all_measurements']:
-                        # Calculate distance-specific SNR in dB
-                        snr_distance_dB = 10 * np.log10(data['psd_avg'] / distance_noise_floor)
+                        # Calculate file-specific SNR in dB
+                        snr_distance_dB = 10 * np.log10(data['psd_avg'] / wav_file_noise_floor)
                         
-                        # Update the worksheet with distance-specific SNR values
+                        # Update the worksheet with file-specific SNR values
                         sheet_name = data['filename']
                         
                         # Find the corresponding sanitized sheet name
@@ -995,12 +997,12 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                             # Find and update the corresponding worksheet
                             for ws in summaryWorkbook.worksheets():
                                 if ws.get_name() == sanitized_sheet_name:
-                                    # Update distance-specific SNR column (column L, index 11)
+                                    # Update file-specific SNR column (column L, index 11)
                                     for j in range(len(snr_distance_dB)):
                                         ws.write(j+1, 11, sanitize_excel_value(snr_distance_dB[j]))
                                     break
         
-        # Create scatter chart with straight lines for distance-specific SNR
+        # Create scatter chart with straight lines for file-specific SNR
         chartSNRDist = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
         
         # First add all non-NoLeak series (colorful lines in background)
@@ -1010,7 +1012,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 series_config = {
                     'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
+                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File_dB column (column L)
                     'line': {'width': 2}
                 }
                 # Apply distinguishable color for regular series
@@ -1023,11 +1025,11 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         grey_index = 0
         for series_info in chart_series_info:
             if 'NoLeak' in series_info['sheet_name']:
-                # Create SNR reference line for NoLeak measurements (should be around 0 dB for distance-specific)
+                # Create SNR reference line for NoLeak measurements (should be around 0 dB for file-specific)
                 series_config = {
-                    'name': series_info['sheet_name'] + ' (Distance Ref)',
+                    'name': series_info['sheet_name'] + ' (File Ref)',
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
+                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File_dB column (column L)
                     'line': {'width': 1}
                 }
                 # Apply grey color
@@ -1036,8 +1038,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 grey_index += 1
                 chartSNRDist.add_series(series_config)
         
-        # Configure distance-specific SNR chart
-        chartSNRDist.set_title({'name': 'Distance-Specific Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
+        # Configure file-specific SNR chart
+        chartSNRDist.set_title({'name': 'File-Specific Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
         chartSNRDist.set_x_axis({
             'name': 'Frequency (Hz)',
             'log_base': 10,
@@ -1046,7 +1048,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             'num_font': {'size': 12}
         })
         chartSNRDist.set_y_axis({
-            'name': 'SNR Distance-Specific (dB)',
+            'name': 'SNR File-Specific (dB)',
             'label_position': 'low',
             'name_layout': {'x': 0.02, 'y': 0.5},
             'name_font': {'size': 12},
@@ -1056,7 +1058,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         chartSNRDist.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
         chartSNRDist.set_legend({'font': {'size': 12}})
         
-        # Insert distance-specific SNR chart into worksheet
+        # Insert file-specific SNR chart into worksheet
         snrDistanceWorksheet.insert_chart('A1', chartSNRDist)
     
         # Create Leak Detection Results worksheet
@@ -1137,12 +1139,12 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 leakDetectionWorksheet.write(row, 0, 'Average Composite Score:')
                 leakDetectionWorksheet.write(row, 1, round(avg_composite, 1))
 
-        # Create Distance-Specific Leak Detection Results worksheet
+        # Create File-Specific Leak Detection Results worksheet
         if leak_detection_distance_specific and isinstance(leak_detection_distance_specific, dict):
-            distance_detection_sheet_name = 'Distance_Specific_Detection'
+            distance_detection_sheet_name = 'File_Specific_Detection'
             counter = 1
             while distance_detection_sheet_name in used_worksheet_names:
-                distance_detection_sheet_name = f'Distance_Specific_Detection_{counter}'
+                distance_detection_sheet_name = f'File_Specific_Detection_{counter}'
                 counter += 1
             used_worksheet_names.add(distance_detection_sheet_name)
             distanceDetectionWorksheet = summaryWorkbook.add_worksheet(distance_detection_sheet_name)
@@ -1185,9 +1187,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 
                 row += 1
             
-            # Add distance-specific frequency band analysis details
+            # Add file-specific frequency band analysis details
             row += 2
-            distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Frequency Band Analysis:')
+            distanceDetectionWorksheet.write(row, 0, 'File-Specific Frequency Band Analysis:')
             row += 1
             
             # Headers for frequency band details
@@ -1208,9 +1210,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                         distanceDetectionWorksheet.write(row, 5, 'YES' if band_result['leak_detected'] else 'NO')
                         row += 1
             
-            # Add distance-specific summary statistics
+            # Add file-specific summary statistics
             row += 2
-            distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Detection Summary:')
+            distanceDetectionWorksheet.write(row, 0, 'File-Specific Detection Summary:')
             row += 1
             
             # Group results by distance for summary
