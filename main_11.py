@@ -1633,7 +1633,10 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
                 unique_measurements.add(measurement_key)
     
     # Create combinations for all unique measurements and all frequency bands
-    for worksheet_name, distance in sorted(unique_measurements):
+    # Sort measurements by distance first, then by worksheet name (same as tab order)
+    sorted_measurements = sorted(unique_measurements, key=lambda x: (x[1], x[0]))  # Sort by distance, then worksheet name
+    
+    for worksheet_name, distance in sorted_measurements:
         for band_name, freq_min, freq_max in frequency_bands:
             combination = (worksheet_name, distance, band_name)
             measurement_band_combinations.append(combination)
