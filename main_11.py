@@ -1586,31 +1586,32 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
     # Get sorted folder names for column headers
     sorted_folders = sorted(folder_groups.keys())
     
-    # Create a structure to hold all measurement/frequency band combinations (assuming identical measurements across folders)
+    # Create a structure to hold all measurement/frequency band combinations (collect from all folders)
     measurement_band_combinations = []
+    unique_measurements = set()
     
-    # Collect measurement/distance/frequency band combinations from the first folder with data
-    reference_folder = None
+    # Collect all unique measurements from all folders
     for folder_name in sorted_folders:
         folder_data = folder_groups[folder_name]
         if folder_data['noleak'] and folder_data['leak']:
-            reference_folder = folder_name
-            break
+            leak_measurements = folder_data['leak']
+            for measurement in leak_measurements:
+                # Extract distance from filename
+                distance_match = re.search(r'(\d+)m', measurement['filename'])
+                distance = int(distance_match.group(1)) if distance_match else 0
+                
+                # Use base filename for consistency
+                base_filename = os.path.basename(measurement['filename'])
+                
+                # Add to unique measurements set
+                measurement_key = (base_filename, distance)
+                unique_measurements.add(measurement_key)
     
-    if reference_folder:
-        folder_data = folder_groups[reference_folder]
-        leak_measurements = folder_data['leak']
-        for measurement in leak_measurements:
-            # Extract distance from filename
-            distance_match = re.search(r'(\d+)m', measurement['filename'])
-            distance = int(distance_match.group(1)) if distance_match else 0
-            
-            # Use base filename for consistency
-            base_filename = os.path.basename(measurement['filename'])
-            
-            for band_name, freq_min, freq_max in frequency_bands:
-                combination = (base_filename, distance, band_name)
-                measurement_band_combinations.append(combination)
+    # Create combinations for all unique measurements and all frequency bands
+    for base_filename, distance in sorted(unique_measurements):
+        for band_name, freq_min, freq_max in frequency_bands:
+            combination = (base_filename, distance, band_name)
+            measurement_band_combinations.append(combination)
     
     # Write headers - basic info columns followed by folder SNR columns
     headers = ['Measurement', 'Distance (m)', 'Frequency Band']
