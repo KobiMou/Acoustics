@@ -1540,14 +1540,35 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
     # Create worksheet
     worksheet = workbook.add_worksheet('FFT_Bands_SNR_Comparison')
     
-    # Define frequency bands for analysis
+    # Define frequency bands for analysis (same as leak detection)
     frequency_bands = [
-        ('Low', 0, 100),
-        ('Mid-Low', 100, 500),
-        ('Mid', 500, 1000),
-        ('Mid-High', 1000, 2000),
-        ('High', 2000, 5000),
-        ('Very High', 5000, 10000)
+        # Very low frequency bands (1-100 Hz) - 10 bands
+        ('Ultra-Low (1-10Hz)', 1, 10),       # Ultra-low frequency structural
+        ('Very Low (10-20Hz)', 10, 20),      # Very low frequency vibrations
+        ('Low Structural (20-30Hz)', 20, 30),      # Low frequency structural response
+        ('Mechanical (30-40Hz)', 30, 40),      # Mechanical vibrations
+        ('Power Harmonics (40-50Hz)', 40, 50),      # Power line and mechanical harmonics
+        ('Power Frequency (50-60Hz)', 50, 60),      # Power frequency range
+        ('Post-Power (60-70Hz)', 60, 70),      # Post-power frequency
+        ('Low Acoustic (70-80Hz)', 70, 80),      # Low acoustic range
+        ('Pre-Acoustic (80-90Hz)', 80, 90),      # Pre-acoustic range
+        ('Low Acoustic Transition (90-100Hz)', 90, 100),     # Low acoustic transition
+        # Refined frequency bands
+        # 100-500 Hz range in 50 Hz increments
+        ('Low Structural 1 (100-150Hz)', 100, 150),    # Low structural range 1
+        ('Low Structural 2 (150-200Hz)', 150, 200),    # Low structural range 2
+        ('Low Structural 3 (200-250Hz)', 200, 250),    # Low structural range 3
+        ('Low Structural 4 (250-300Hz)', 250, 300),    # Low structural range 4
+        ('Low Structural 5 (300-350Hz)', 300, 350),    # Low structural range 5
+        ('Low Structural 6 (350-400Hz)', 350, 400),    # Low structural range 6
+        ('Low Structural 7 (400-450Hz)', 400, 450),    # Low structural range 7
+        ('Low Structural 8 (450-500Hz)', 450, 500),    # Low structural range 8
+        # 500-2000 Hz range in 1000 Hz jumps
+        ('Mid Frequency 1 (500-1500Hz)', 500, 1500),   # Mid frequency acoustic emissions 1
+        ('Mid Frequency 2 (1500-2000Hz)', 1500, 2000),  # Mid frequency acoustic emissions 2
+        # Original higher frequency bands
+        ('High Frequency (2000-8000Hz)', 2000, 8000),  # High frequency turbulence
+        ('Ultrasonic (8000-20000Hz)', 8000, 20000)  # Ultrasonic range
     ]
     
     # Group data by folder
