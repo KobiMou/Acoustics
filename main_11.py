@@ -320,8 +320,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         psd_AVG = np.mean(psd, axis=0)
         
         # Calculate SNR (will be updated after all files are processed)
-        snr_dB = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
-        snr_distance_dB = np.zeros_like(psd_AVG)  # Placeholder for distance-specific SNR
+        snr = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
+        snr_file = np.zeros_like(psd_AVG)  # Placeholder for file-specific SNR
         
         # Create worksheet name based on distance and leak/noleak designation
         filename = ListFileNames[iLoop]
@@ -391,7 +391,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR_dB', 'SNR_File_dB']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR', 'SNR_File']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
         
@@ -407,8 +407,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             summaryWorksheet.write(i+1,7,sanitize_excel_value(fft_MIN[i].imag))
             summaryWorksheet.write(i+1,8,sanitize_excel_value(fftAbs_MIN[i]))
             summaryWorksheet.write(i+1,9,sanitize_excel_value(psd_AVG[i]))
-            summaryWorksheet.write(i+1,10,sanitize_excel_value(snr_dB[i]))
-            summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_distance_dB[i]))
+            summaryWorksheet.write(i+1,10,sanitize_excel_value(snr[i]))
+            summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_file[i]))
             
         iLoop = iLoop + 1
     
@@ -585,8 +585,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             
             # Update SNR data for all measurements
             for data in analysis_data:
-                # Calculate SNR in dB for all measurements (including NoLeak)
-                snr_dB = 10 * np.log10(data['psd_avg'] / noise_floor)
+                # Calculate SNR in linear scale for all measurements (including NoLeak)
+                snr = data['psd_avg'] / noise_floor
                 
                 # Update the worksheet with SNR values
                 sheet_name = data['filename']
@@ -603,8 +603,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                     for ws in summaryWorkbook.worksheets():
                         if ws.get_name() == sanitized_sheet_name:
                             # Update SNR column (column K, index 10)
-                            for j in range(len(snr_dB)):
-                                ws.write(j+1, 10, sanitize_excel_value(snr_dB[j]))
+                            for j in range(len(snr)):
+                                ws.write(j+1, 10, sanitize_excel_value(snr[j]))
                             break
 
     # Perform leak detection analysis
@@ -897,7 +897,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 series_config = {
                     'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
+                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR column (column K)
                     'line': {'width': 2}
                 }
                 # Apply distinguishable color for regular series
@@ -914,7 +914,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 series_config = {
                     'name': series_info['sheet_name'] + ' (Reference)',
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
+                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR column (column K)
                     'line': {'width': 1}
                 }
                 # Apply grey color
@@ -933,7 +933,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             'num_font': {'size': 12}
         })
         chartSNR.set_y_axis({
-            'name': 'SNR (dB)',
+            'name': 'SNR (Linear)',
             'label_position': 'low',
             'name_layout': {'x': 0.02, 'y': 0.5},
             'name_font': {'size': 12},
@@ -980,8 +980,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                     
                     # Calculate SNR for all measurements from this WAV file
                     for data in group['all_measurements']:
-                        # Calculate file-specific SNR in dB
-                        snr_distance_dB = 10 * np.log10(data['psd_avg'] / wav_file_noise_floor)
+                        # Calculate file-specific SNR in linear scale
+                        snr_file = data['psd_avg'] / wav_file_noise_floor
                         
                         # Update the worksheet with file-specific SNR values
                         sheet_name = data['filename']
@@ -998,8 +998,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                             for ws in summaryWorkbook.worksheets():
                                 if ws.get_name() == sanitized_sheet_name:
                                     # Update file-specific SNR column (column L, index 11)
-                                    for j in range(len(snr_distance_dB)):
-                                        ws.write(j+1, 11, sanitize_excel_value(snr_distance_dB[j]))
+                                    for j in range(len(snr_file)):
+                                        ws.write(j+1, 11, sanitize_excel_value(snr_file[j]))
                                     break
         
         # Create scatter chart with straight lines for file-specific SNR
@@ -1012,7 +1012,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 series_config = {
                     'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File_dB column (column L)
+                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File column (column L)
                     'line': {'width': 2}
                 }
                 # Apply distinguishable color for regular series
@@ -1025,11 +1025,11 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         grey_index = 0
         for series_info in chart_series_info:
             if 'NoLeak' in series_info['sheet_name']:
-                # Create SNR reference line for NoLeak measurements (should be around 0 dB for file-specific)
+                # Create SNR reference line for NoLeak measurements (should be around 1.0 for file-specific linear)
                 series_config = {
                     'name': series_info['sheet_name'] + ' (File Ref)',
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File_dB column (column L)
+                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File column (column L)
                     'line': {'width': 1}
                 }
                 # Apply grey color
@@ -1048,7 +1048,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             'num_font': {'size': 12}
         })
         chartSNRDist.set_y_axis({
-            'name': 'SNR File-Specific (dB)',
+            'name': 'SNR File-Specific (Linear)',
             'label_position': 'low',
             'name_layout': {'x': 0.02, 'y': 0.5},
             'name_font': {'size': 12},
