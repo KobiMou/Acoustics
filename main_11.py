@@ -322,6 +322,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Calculate SNR (will be updated after all files are processed)
         snr = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
         snr_file = np.zeros_like(psd_AVG)  # Placeholder for file-specific SNR
+        snr_fft = np.zeros_like(psd_AVG)  # Placeholder for FFT-based SNR
+        snr_fft_file = np.zeros_like(psd_AVG)  # Placeholder for file-specific FFT-based SNR
         
         # Create worksheet name based on distance and leak/noleak designation
         filename = ListFileNames[iLoop]
@@ -391,7 +393,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR', 'SNR_File']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR', 'SNR_File', 'SNR_FFT', 'SNR_FFT_File']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
         
@@ -409,6 +411,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             summaryWorksheet.write(i+1,9,sanitize_excel_value(psd_AVG[i]))
             summaryWorksheet.write(i+1,10,sanitize_excel_value(snr[i]))
             summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_file[i]))
+            summaryWorksheet.write(i+1,12,sanitize_excel_value(snr_fft[i]))
+            summaryWorksheet.write(i+1,13,sanitize_excel_value(snr_fft_file[i]))
             
         iLoop = iLoop + 1
     
@@ -574,19 +578,28 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     if analysis_data:
         # Calculate global noise floor from all NoLeak measurements
         noleak_psd_data = []
+        noleak_fft_data = []
         for data in analysis_data:
             if data['is_noleak']:
                 noleak_psd_data.append(data['psd_avg'])
+                noleak_fft_data.append(data['fft_abs_min'])
         
         if noleak_psd_data:
             # Create global noise floor baseline
             noise_floor = np.mean(np.vstack(noleak_psd_data), axis=0)
             noise_floor = np.maximum(noise_floor, np.finfo(float).eps)  # Avoid division by zero
             
+            # Create global FFT-based noise floor baseline
+            fft_noise_floor = np.mean(np.vstack(noleak_fft_data), axis=0)
+            fft_noise_floor = np.maximum(fft_noise_floor, np.finfo(float).eps)  # Avoid division by zero
+            
             # Update SNR data for all measurements
             for data in analysis_data:
                 # Calculate SNR in linear scale for all measurements (including NoLeak)
                 snr = data['psd_avg'] / noise_floor
+                
+                # Calculate FFT-based SNR in linear scale for all measurements (including NoLeak)
+                snr_fft = data['fft_abs_min'] / fft_noise_floor
                 
                 # Update the worksheet with SNR values
                 sheet_name = data['filename']
@@ -605,6 +618,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                             # Update SNR column (column K, index 10)
                             for j in range(len(snr)):
                                 ws.write(j+1, 10, sanitize_excel_value(snr[j]))
+                            # Update FFT-based SNR column (column M, index 12)
+                            for j in range(len(snr_fft)):
+                                ws.write(j+1, 12, sanitize_excel_value(snr_fft[j]))
                             break
 
     # Perform leak detection analysis
@@ -924,7 +940,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 chartSNR.add_series(series_config)
         
         # Configure SNR chart
-        chartSNR.set_title({'name': 'Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
+        chartSNR.set_title({'name': 'Signal-to-Noise Ratio (PSD) vs Frequency', 'name_font': {'size': 12}})
         chartSNR.set_x_axis({
             'name': 'Frequency (Hz)',
             'log_base': 10,
@@ -978,10 +994,17 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                     wav_file_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
                     wav_file_noise_floor = np.maximum(wav_file_noise_floor, np.finfo(float).eps)
                     
+                    # Create WAV file-specific FFT-based noise floor
+                    wav_file_fft_noise_floor = np.mean(np.vstack([data['fft_abs_min'] for data in group['noleak']]), axis=0)
+                    wav_file_fft_noise_floor = np.maximum(wav_file_fft_noise_floor, np.finfo(float).eps)
+                    
                     # Calculate SNR for all measurements from this WAV file
                     for data in group['all_measurements']:
                         # Calculate file-specific SNR in linear scale
                         snr_file = data['psd_avg'] / wav_file_noise_floor
+                        
+                        # Calculate file-specific FFT-based SNR in linear scale
+                        snr_fft_file = data['fft_abs_min'] / wav_file_fft_noise_floor
                         
                         # Update the worksheet with file-specific SNR values
                         sheet_name = data['filename']
@@ -1000,6 +1023,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                                     # Update file-specific SNR column (column L, index 11)
                                     for j in range(len(snr_file)):
                                         ws.write(j+1, 11, sanitize_excel_value(snr_file[j]))
+                                    # Update file-specific FFT-based SNR column (column N, index 13)
+                                    for j in range(len(snr_fft_file)):
+                                        ws.write(j+1, 13, sanitize_excel_value(snr_fft_file[j]))
                                     break
         
         # Create scatter chart with straight lines for file-specific SNR
@@ -1039,7 +1065,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 chartSNRDist.add_series(series_config)
         
         # Configure file-specific SNR chart
-        chartSNRDist.set_title({'name': 'File-Specific Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
+        chartSNRDist.set_title({'name': 'File-Specific Signal-to-Noise Ratio (PSD) vs Frequency', 'name_font': {'size': 12}})
         chartSNRDist.set_x_axis({
             'name': 'Frequency (Hz)',
             'log_base': 10,
@@ -1060,6 +1086,140 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         
         # Insert file-specific SNR chart into worksheet
         snrDistanceWorksheet.insert_chart('A1', chartSNRDist)
+        
+        # Create FFT-based SNR plot worksheet
+        snr_fft_sheet_name = 'SNR_FFT'
+        counter = 1
+        while snr_fft_sheet_name in used_worksheet_names:
+            snr_fft_sheet_name = f'SNR_FFT_{counter}'
+            counter += 1
+        used_worksheet_names.add(snr_fft_sheet_name)
+        snrFFTWorksheet = summaryWorkbook.add_worksheet(snr_fft_sheet_name)
+        
+        # Create scatter chart with straight lines for FFT-based SNR
+        chartSNRFFT = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+        
+        # First add all non-NoLeak series (colorful lines in background)
+        color_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' not in series_info['sheet_name']:
+                series_config = {
+                    'name': series_info['sheet_name'],
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 12, series_info['data_points'], 12],     # SNR_FFT column (column M)
+                    'line': {'width': 2}
+                }
+                # Apply distinguishable color for regular series
+                regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+                series_config['line']['color'] = regular_color
+                color_index += 1
+                chartSNRFFT.add_series(series_config)
+        
+        # Then add all NoLeak series (grey lines in front)
+        grey_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' in series_info['sheet_name']:
+                # Create SNR reference line for NoLeak measurements
+                series_config = {
+                    'name': series_info['sheet_name'] + ' (Reference)',
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 12, series_info['data_points'], 12],     # SNR_FFT column (column M)
+                    'line': {'width': 1}
+                }
+                # Apply grey color
+                grey_color = grey_colors[grey_index % len(grey_colors)]
+                series_config['line']['color'] = grey_color
+                grey_index += 1
+                chartSNRFFT.add_series(series_config)
+        
+        # Configure FFT-based SNR chart
+        chartSNRFFT.set_title({'name': 'Signal-to-Noise Ratio (FFT) vs Frequency', 'name_font': {'size': 12}})
+        chartSNRFFT.set_x_axis({
+            'name': 'Frequency (Hz)',
+            'log_base': 10,
+            'label_position': 'low',
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFT.set_y_axis({
+            'name': 'SNR FFT (Linear)',
+            'label_position': 'low',
+            'name_layout': {'x': 0.02, 'y': 0.5},
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFT.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+        chartSNRFFT.set_legend({'font': {'size': 12}})
+        
+        # Insert FFT-based SNR chart into worksheet
+        snrFFTWorksheet.insert_chart('A1', chartSNRFFT)
+        
+        # Create File-Specific FFT-based SNR plot worksheet
+        snr_fft_file_sheet_name = 'SNR_FFT_File_Specific'
+        counter = 1
+        while snr_fft_file_sheet_name in used_worksheet_names:
+            snr_fft_file_sheet_name = f'SNR_FFT_File_Specific_{counter}'
+            counter += 1
+        used_worksheet_names.add(snr_fft_file_sheet_name)
+        snrFFTFileWorksheet = summaryWorkbook.add_worksheet(snr_fft_file_sheet_name)
+        
+        # Create scatter chart with straight lines for file-specific FFT-based SNR
+        chartSNRFFTFile = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+        
+        # First add all non-NoLeak series (colorful lines in background)
+        color_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' not in series_info['sheet_name']:
+                series_config = {
+                    'name': series_info['sheet_name'],
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 13, series_info['data_points'], 13],     # SNR_FFT_File column (column N)
+                    'line': {'width': 2}
+                }
+                # Apply distinguishable color for regular series
+                regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+                series_config['line']['color'] = regular_color
+                color_index += 1
+                chartSNRFFTFile.add_series(series_config)
+        
+        # Then add all NoLeak series as reference
+        grey_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' in series_info['sheet_name']:
+                # Create SNR reference line for NoLeak measurements (should be around 1.0 for file-specific linear)
+                series_config = {
+                    'name': series_info['sheet_name'] + ' (File Ref)',
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 13, series_info['data_points'], 13],     # SNR_FFT_File column (column N)
+                    'line': {'width': 1}
+                }
+                # Apply grey color
+                grey_color = grey_colors[grey_index % len(grey_colors)]
+                series_config['line']['color'] = grey_color
+                grey_index += 1
+                chartSNRFFTFile.add_series(series_config)
+        
+        # Configure file-specific FFT-based SNR chart
+        chartSNRFFTFile.set_title({'name': 'File-Specific Signal-to-Noise Ratio (FFT) vs Frequency', 'name_font': {'size': 12}})
+        chartSNRFFTFile.set_x_axis({
+            'name': 'Frequency (Hz)',
+            'log_base': 10,
+            'label_position': 'low',
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFTFile.set_y_axis({
+            'name': 'SNR FFT File-Specific (Linear)',
+            'label_position': 'low',
+            'name_layout': {'x': 0.02, 'y': 0.5},
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFTFile.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+        chartSNRFFTFile.set_legend({'font': {'size': 12}})
+        
+        # Insert file-specific FFT-based SNR chart into worksheet
+        snrFFTFileWorksheet.insert_chart('A1', chartSNRFFTFile)
     
         # Create Leak Detection Results worksheet
         if leak_detection_results and isinstance(leak_detection_results, dict):
