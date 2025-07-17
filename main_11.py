@@ -1590,7 +1590,7 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
     measurement_band_combinations = []
     unique_measurements = set()
     
-    # Collect all unique measurements from all folders
+    # Collect all unique measurements from all folders using worksheet tab names
     for folder_name in sorted_folders:
         folder_data = folder_groups[folder_name]
         if folder_data['noleak'] and folder_data['leak']:
@@ -1600,17 +1600,42 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
                 distance_match = re.search(r'(\d+)m', measurement['filename'])
                 distance = int(distance_match.group(1)) if distance_match else 0
                 
-                # Use base filename for consistency
-                base_filename = os.path.basename(measurement['filename'])
+                # Create worksheet tab name (same logic as in individual folder processing)
+                filename = measurement['filename']
                 
-                # Add to unique measurements set
-                measurement_key = (base_filename, distance)
+                # Extract distance and any additional word after it
+                distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                if distance_match:
+                    distance_str = f"{distance_match.group(1)}m"
+                    additional_word = distance_match.group(2)  # The word after 'm' (if any)
+                    
+                    # Build distance part with additional word if present
+                    if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                        distance_part = f"{distance_str}_{additional_word}"
+                    else:
+                        distance_part = distance_str
+                else:
+                    distance_part = "Unknown"
+                
+                # Determine leak/noleak designation
+                if '_leak' in filename.lower():
+                    leak_designation = "Leak"
+                elif '_noleak' in filename.lower():
+                    leak_designation = "NoLeak"
+                else:
+                    leak_designation = "Unknown"
+                
+                # Create worksheet name: "5m_sensor_Leak", "10m_test_NoLeak", etc.
+                worksheet_name = f"{distance_part}_{leak_designation}"
+                
+                # Add to unique measurements set using worksheet name
+                measurement_key = (worksheet_name, distance)
                 unique_measurements.add(measurement_key)
     
     # Create combinations for all unique measurements and all frequency bands
-    for base_filename, distance in sorted(unique_measurements):
+    for worksheet_name, distance in sorted(unique_measurements):
         for band_name, freq_min, freq_max in frequency_bands:
-            combination = (base_filename, distance, band_name)
+            combination = (worksheet_name, distance, band_name)
             measurement_band_combinations.append(combination)
     
     # Write headers - basic info columns followed by folder SNR columns
@@ -1647,8 +1672,33 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
                 signal = measurement['fft_abs_min']
                 snr_values = signal / folder_noise_floor
                 
-                # Use base filename for key (remove folder-specific path info)
-                base_filename = os.path.basename(measurement['filename'])
+                # Create worksheet tab name (same logic as in individual folder processing)
+                filename = measurement['filename']
+                
+                # Extract distance and any additional word after it
+                distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                if distance_match:
+                    distance_str = f"{distance_match.group(1)}m"
+                    additional_word = distance_match.group(2)  # The word after 'm' (if any)
+                    
+                    # Build distance part with additional word if present
+                    if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                        distance_part = f"{distance_str}_{additional_word}"
+                    else:
+                        distance_part = distance_str
+                else:
+                    distance_part = "Unknown"
+                
+                # Determine leak/noleak designation
+                if '_leak' in filename.lower():
+                    leak_designation = "Leak"
+                elif '_noleak' in filename.lower():
+                    leak_designation = "NoLeak"
+                else:
+                    leak_designation = "Unknown"
+                
+                # Create worksheet name: "5m_sensor_Leak", "10m_test_NoLeak", etc.
+                worksheet_name = f"{distance_part}_{leak_designation}"
                 
                 for band_name, freq_min, freq_max in frequency_bands:
                     # Find frequency indices for this band
@@ -1656,24 +1706,21 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
                     
                     if np.any(band_mask):
                         band_snr = np.mean(snr_values[band_mask])
-                        key = (base_filename, band_name)
+                        key = (worksheet_name, band_name)
                         folder_snr_data[folder_name][key] = band_snr
     
     # Write data rows
     row = 1
-    for measurement_name, distance, band_name in measurement_band_combinations:
+    for worksheet_name, distance, band_name in measurement_band_combinations:
         # Write basic info
-        worksheet.write(row, 0, measurement_name)
+        worksheet.write(row, 0, worksheet_name)
         worksheet.write(row, 1, distance)
         worksheet.write(row, 2, band_name)
-        
-        # Use base filename for consistent lookup
-        base_measurement_name = os.path.basename(measurement_name)
         
         # Write SNR values for each folder
         for col_idx, folder_name in enumerate(sorted_folders):
             if folder_name in folder_snr_data:
-                key = (base_measurement_name, band_name)
+                key = (worksheet_name, band_name)
                 if key in folder_snr_data[folder_name]:
                     snr_value = folder_snr_data[folder_name][key]
                     worksheet.write(row, 3 + col_idx, round(snr_value, 3))
