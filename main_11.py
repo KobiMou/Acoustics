@@ -1586,10 +1586,10 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
     # Get sorted folder names for column headers
     sorted_folders = sorted(folder_groups.keys())
     
-    # Create a structure to hold all measurement/frequency band combinations
+    # Create a structure to hold all measurement/frequency band combinations in original order
     measurement_band_combinations = []
     
-    # Collect all unique measurement/distance/frequency band combinations
+    # Collect all measurement/distance/frequency band combinations in original processing order
     for folder_name in sorted_folders:
         folder_data = folder_groups[folder_name]
         if not folder_data['noleak']:
@@ -1606,8 +1606,7 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
                 if combination not in measurement_band_combinations:
                     measurement_band_combinations.append(combination)
     
-    # Sort combinations by measurement name, then distance, then frequency band
-    measurement_band_combinations.sort(key=lambda x: (x[0], x[1], frequency_bands.index(next(band for band in frequency_bands if band[0] == x[2]))))
+    # Keep the original order - don't sort the combinations
     
     # Write headers - basic info columns followed by folder SNR columns
     headers = ['Measurement', 'Distance (m)', 'Frequency Band']
