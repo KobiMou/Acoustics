@@ -1583,8 +1583,16 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
         else:
             folder_groups[folder]['leak'].append(data)
     
-    # Get sorted folder names for column headers
-    sorted_folders = sorted(folder_groups.keys())
+    # Get sorted folder names for column headers - sort by distance if present, otherwise alphabetically
+    def extract_distance_from_folder_name(folder_name):
+        # Try to extract distance from folder name (e.g., "5m", "10m", etc.)
+        distance_match = re.search(r'(\d+)m', folder_name)
+        if distance_match:
+            return int(distance_match.group(1))
+        else:
+            return float('inf')  # Put folders without distance at the end
+    
+    sorted_folders = sorted(folder_groups.keys(), key=lambda x: (extract_distance_from_folder_name(x), x))
     
     # Create a structure to hold all measurement/frequency band combinations (collect from all folders)
     measurement_band_combinations = []
