@@ -1583,8 +1583,16 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
         else:
             folder_groups[folder]['leak'].append(data)
     
-    # Get sorted folder names for column headers - simple alphabetical order
-    sorted_folders = sorted(folder_groups.keys())
+    # Get sorted folder names for column headers - sort by numbers followed by "lh" (case-insensitive)
+    def extract_lh_number(folder_name):
+        # Try to extract number followed by "lh" or "LH" (case-insensitive)
+        lh_match = re.search(r'(\d+)lh', folder_name, re.IGNORECASE)
+        if lh_match:
+            return int(lh_match.group(1))
+        else:
+            return float('inf')  # Put folders without lh pattern at the end
+    
+    sorted_folders = sorted(folder_groups.keys(), key=lambda x: (extract_lh_number(x), x))
     
     # Create a structure to hold all measurement/frequency band combinations (collect from all folders)
     measurement_band_combinations = []
