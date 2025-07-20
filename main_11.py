@@ -320,8 +320,10 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         psd_AVG = np.mean(psd, axis=0)
         
         # Calculate SNR (will be updated after all files are processed)
-        snr_dB = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
-        snr_distance_dB = np.zeros_like(psd_AVG)  # Placeholder for distance-specific SNR
+        snr = np.zeros_like(psd_AVG)  # Placeholder, will be calculated later
+        snr_file = np.zeros_like(psd_AVG)  # Placeholder for file-specific SNR
+        snr_fft = np.zeros_like(psd_AVG)  # Placeholder for FFT-based SNR
+        snr_fft_file = np.zeros_like(psd_AVG)  # Placeholder for file-specific FFT-based SNR
         
         # Create worksheet name based on distance and leak/noleak designation
         filename = ListFileNames[iLoop]
@@ -391,7 +393,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         summaryWorksheet = summaryWorkbook.add_worksheet(sanitized_sheet_name)
         
         # Write headers for summary worksheet
-        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR_dB', 'SNR_Distance_dB']
+        headers = ['Time', 'Data', 'Frequency', 'FFT_Real', 'FFT_Imag', 'FFT_Abs', 'FFT_MIN_Real', 'FFT_MIN_Imag', 'FFT_MIN_Abs', 'PSD', 'SNR', 'SNR_File', 'SNR_FFT', 'SNR_FFT_File']
         for col, header in enumerate(headers):
             summaryWorksheet.write(0, col, header)
         
@@ -407,8 +409,10 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             summaryWorksheet.write(i+1,7,sanitize_excel_value(fft_MIN[i].imag))
             summaryWorksheet.write(i+1,8,sanitize_excel_value(fftAbs_MIN[i]))
             summaryWorksheet.write(i+1,9,sanitize_excel_value(psd_AVG[i]))
-            summaryWorksheet.write(i+1,10,sanitize_excel_value(snr_dB[i]))
-            summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_distance_dB[i]))
+            summaryWorksheet.write(i+1,10,sanitize_excel_value(snr[i]))
+            summaryWorksheet.write(i+1,11,sanitize_excel_value(snr_file[i]))
+            summaryWorksheet.write(i+1,12,sanitize_excel_value(snr_fft[i]))
+            summaryWorksheet.write(i+1,13,sanitize_excel_value(snr_fft_file[i]))
             
         iLoop = iLoop + 1
     
@@ -574,19 +578,28 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     if analysis_data:
         # Calculate global noise floor from all NoLeak measurements
         noleak_psd_data = []
+        noleak_fft_data = []
         for data in analysis_data:
             if data['is_noleak']:
                 noleak_psd_data.append(data['psd_avg'])
+                noleak_fft_data.append(data['fft_abs_min'])
         
         if noleak_psd_data:
             # Create global noise floor baseline
             noise_floor = np.mean(np.vstack(noleak_psd_data), axis=0)
             noise_floor = np.maximum(noise_floor, np.finfo(float).eps)  # Avoid division by zero
             
+            # Create global FFT-based noise floor baseline
+            fft_noise_floor = np.mean(np.vstack(noleak_fft_data), axis=0)
+            fft_noise_floor = np.maximum(fft_noise_floor, np.finfo(float).eps)  # Avoid division by zero
+            
             # Update SNR data for all measurements
             for data in analysis_data:
-                # Calculate SNR in dB for all measurements (including NoLeak)
-                snr_dB = 10 * np.log10(data['psd_avg'] / noise_floor)
+                # Calculate SNR in linear scale for all measurements (including NoLeak)
+                snr = data['psd_avg'] / noise_floor
+                
+                # Calculate FFT-based SNR in linear scale for all measurements (including NoLeak)
+                snr_fft = data['fft_abs_min'] / fft_noise_floor
                 
                 # Update the worksheet with SNR values
                 sheet_name = data['filename']
@@ -603,56 +616,62 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                     for ws in summaryWorkbook.worksheets():
                         if ws.get_name() == sanitized_sheet_name:
                             # Update SNR column (column K, index 10)
-                            for j in range(len(snr_dB)):
-                                ws.write(j+1, 10, sanitize_excel_value(snr_dB[j]))
+                            for j in range(len(snr)):
+                                ws.write(j+1, 10, sanitize_excel_value(snr[j]))
+                            # Update FFT-based SNR column (column M, index 12)
+                            for j in range(len(snr_fft)):
+                                ws.write(j+1, 12, sanitize_excel_value(snr_fft[j]))
                             break
 
     # Perform leak detection analysis
     leak_detection_results = analyze_leak_detection(analysis_data)
     
     def analyze_leak_detection_distance_specific(analysis_data):
-        """Analyze leak detection using distance-specific noise floors"""
+        """Analyze leak detection using file-specific noise floors"""
         
-        # Group data by distance
-        distance_groups = {}
+        # Group data by WAV file base name (without _leak/_noleak suffix)
+        wav_file_groups = {}
         
         for data in analysis_data:
-            # Extract distance from filename
-            match = re.search(r'(\d+)m', data['filename'])
-            if match:
-                distance = int(match.group(1))
-                if distance not in distance_groups:
-                    distance_groups[distance] = {'noleak': [], 'potential_leaks': []}
-                
-                if data['is_noleak']:
-                    distance_groups[distance]['noleak'].append(data)
-                else:
-                    distance_groups[distance]['potential_leaks'].append(data)
+            # Extract base filename without _leak/_noleak suffix
+            base_filename = re.sub(r'_(leak|noleak)$', '', data['filename'])
+            
+            if base_filename not in wav_file_groups:
+                wav_file_groups[base_filename] = {'noleak': [], 'potential_leaks': []}
+            
+            if data['is_noleak']:
+                wav_file_groups[base_filename]['noleak'].append(data)
+            else:
+                wav_file_groups[base_filename]['potential_leaks'].append(data)
         
-        # Analyze each distance group
+        # Analyze each WAV file group
         results = {}
         
-        for distance, group in distance_groups.items():
+        for base_filename, group in wav_file_groups.items():
+            # Extract distance from base filename
+            distance_match = re.search(r'(\d+)m', base_filename)
+            distance = int(distance_match.group(1)) if distance_match else 0
+            
             if not group['noleak']:
-                # No NoLeak baseline for this distance
+                # No NoLeak baseline for this WAV file
                 for leak_data in group['potential_leaks']:
                     results[leak_data['filename']] = {
-                        'error': f'No NoLeak baseline available for {distance}m distance',
+                        'error': f'No NoLeak baseline available for WAV file {base_filename}',
                         'distance': distance,
                         'baseline_available': False
                     }
                 continue
             
-            # Create distance-specific baseline
+            # Create WAV file-specific baseline (each WAV file uses only its own NoLeak data)
             noleak_baseline = np.vstack([data['psd_avg'] for data in group['noleak']])
             
-            # Analyze potential leaks at this distance
+            # Analyze potential leaks for this WAV file
             for leak_data in group['potential_leaks']:
                 detection_result = calculate_leak_detection_score(
                     leak_data['frequency'], leak_data['psd_avg'], noleak_baseline
                 )
                 
-                # Add distance-specific information
+                # Add WAV file-specific information
                 detection_result['distance'] = distance
                 detection_result['baseline_measurements'] = len(group['noleak'])
                 detection_result['baseline_files'] = [data['filename'] for data in group['noleak']]
@@ -894,7 +913,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 series_config = {
                     'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
+                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR column (column K)
                     'line': {'width': 2}
                 }
                 # Apply distinguishable color for regular series
@@ -911,7 +930,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 series_config = {
                     'name': series_info['sheet_name'] + ' (Reference)',
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR_dB column (column K)
+                    'values': [series_info['sheet_name'], 1, 10, series_info['data_points'], 10],     # SNR column (column K)
                     'line': {'width': 1}
                 }
                 # Apply grey color
@@ -921,7 +940,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 chartSNR.add_series(series_config)
         
         # Configure SNR chart
-        chartSNR.set_title({'name': 'Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
+        chartSNR.set_title({'name': 'Signal-to-Noise Ratio (PSD) vs Frequency', 'name_font': {'size': 12}})
         chartSNR.set_x_axis({
             'name': 'Frequency (Hz)',
             'log_base': 10,
@@ -930,7 +949,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             'num_font': {'size': 12}
         })
         chartSNR.set_y_axis({
-            'name': 'SNR (dB)',
+            'name': 'SNR (Linear)',
             'label_position': 'low',
             'name_layout': {'x': 0.02, 'y': 0.5},
             'name_font': {'size': 12},
@@ -943,45 +962,51 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         # Insert SNR chart into worksheet
         snrPlotWorksheet.insert_chart('A1', chartSNR)
 
-        # Create Distance-Specific SNR plot worksheet
-        snr_distance_sheet_name = 'SNR_Distance_Specific'
+        # Create File-Specific SNR plot worksheet
+        snr_distance_sheet_name = 'SNR_File_Specific'
         counter = 1
         while snr_distance_sheet_name in used_worksheet_names:
-            snr_distance_sheet_name = f'SNR_Distance_Specific_{counter}'
+            snr_distance_sheet_name = f'SNR_File_Specific_{counter}'
             counter += 1
         used_worksheet_names.add(snr_distance_sheet_name)
         snrDistanceWorksheet = summaryWorkbook.add_worksheet(snr_distance_sheet_name)
         
-        # Calculate distance-specific SNR data
+        # Calculate file-specific SNR data
         if analysis_data:
-            # Group data by distance
-            distance_groups = {}
+            # Group data by WAV file base name (without _leak/_noleak suffix)
+            wav_file_groups = {}
             
             for data in analysis_data:
-                # Extract distance from filename
-                match = re.search(r'(\d+)m', data['filename'])
-                if match:
-                    distance = int(match.group(1))
-                    if distance not in distance_groups:
-                        distance_groups[distance] = {'noleak': [], 'all_measurements': []}
-                    
-                    distance_groups[distance]['all_measurements'].append(data)
-                    if data['is_noleak']:
-                        distance_groups[distance]['noleak'].append(data)
+                # Extract base filename without _leak/_noleak suffix
+                base_filename = re.sub(r'_(leak|noleak)$', '', data['filename'])
+                
+                if base_filename not in wav_file_groups:
+                    wav_file_groups[base_filename] = {'noleak': [], 'all_measurements': []}
+                
+                wav_file_groups[base_filename]['all_measurements'].append(data)
+                if data['is_noleak']:
+                    wav_file_groups[base_filename]['noleak'].append(data)
             
-            # Calculate distance-specific SNR for each group
-            for distance, group in distance_groups.items():
+            # Calculate file-specific SNR for each WAV file group
+            for base_filename, group in wav_file_groups.items():
                 if group['noleak']:
-                    # Create distance-specific noise floor
-                    distance_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
-                    distance_noise_floor = np.maximum(distance_noise_floor, np.finfo(float).eps)
+                    # Create WAV file-specific noise floor (each WAV file uses only its own NoLeak data)
+                    wav_file_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
+                    wav_file_noise_floor = np.maximum(wav_file_noise_floor, np.finfo(float).eps)
                     
-                    # Calculate SNR for all measurements at this distance
+                    # Create WAV file-specific FFT-based noise floor
+                    wav_file_fft_noise_floor = np.mean(np.vstack([data['fft_abs_min'] for data in group['noleak']]), axis=0)
+                    wav_file_fft_noise_floor = np.maximum(wav_file_fft_noise_floor, np.finfo(float).eps)
+                    
+                    # Calculate SNR for all measurements from this WAV file
                     for data in group['all_measurements']:
-                        # Calculate distance-specific SNR in dB
-                        snr_distance_dB = 10 * np.log10(data['psd_avg'] / distance_noise_floor)
+                        # Calculate file-specific SNR in linear scale
+                        snr_file = data['psd_avg'] / wav_file_noise_floor
                         
-                        # Update the worksheet with distance-specific SNR values
+                        # Calculate file-specific FFT-based SNR in linear scale
+                        snr_fft_file = data['fft_abs_min'] / wav_file_fft_noise_floor
+                        
+                        # Update the worksheet with file-specific SNR values
                         sheet_name = data['filename']
                         
                         # Find the corresponding sanitized sheet name
@@ -995,12 +1020,15 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                             # Find and update the corresponding worksheet
                             for ws in summaryWorkbook.worksheets():
                                 if ws.get_name() == sanitized_sheet_name:
-                                    # Update distance-specific SNR column (column L, index 11)
-                                    for j in range(len(snr_distance_dB)):
-                                        ws.write(j+1, 11, sanitize_excel_value(snr_distance_dB[j]))
+                                    # Update file-specific SNR column (column L, index 11)
+                                    for j in range(len(snr_file)):
+                                        ws.write(j+1, 11, sanitize_excel_value(snr_file[j]))
+                                    # Update file-specific FFT-based SNR column (column N, index 13)
+                                    for j in range(len(snr_fft_file)):
+                                        ws.write(j+1, 13, sanitize_excel_value(snr_fft_file[j]))
                                     break
         
-        # Create scatter chart with straight lines for distance-specific SNR
+        # Create scatter chart with straight lines for file-specific SNR
         chartSNRDist = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
         
         # First add all non-NoLeak series (colorful lines in background)
@@ -1010,7 +1038,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 series_config = {
                     'name': series_info['sheet_name'],
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
+                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File column (column L)
                     'line': {'width': 2}
                 }
                 # Apply distinguishable color for regular series
@@ -1023,11 +1051,11 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         grey_index = 0
         for series_info in chart_series_info:
             if 'NoLeak' in series_info['sheet_name']:
-                # Create SNR reference line for NoLeak measurements (should be around 0 dB for distance-specific)
+                # Create SNR reference line for NoLeak measurements (should be around 1.0 for file-specific linear)
                 series_config = {
-                    'name': series_info['sheet_name'] + ' (Distance Ref)',
+                    'name': series_info['sheet_name'] + ' (File Ref)',
                     'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
-                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_Distance_dB column (column L)
+                    'values': [series_info['sheet_name'], 1, 11, series_info['data_points'], 11],     # SNR_File column (column L)
                     'line': {'width': 1}
                 }
                 # Apply grey color
@@ -1036,8 +1064,8 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 grey_index += 1
                 chartSNRDist.add_series(series_config)
         
-        # Configure distance-specific SNR chart
-        chartSNRDist.set_title({'name': 'Distance-Specific Signal-to-Noise Ratio vs Frequency', 'name_font': {'size': 12}})
+        # Configure file-specific SNR chart
+        chartSNRDist.set_title({'name': 'File-Specific Signal-to-Noise Ratio (PSD) vs Frequency', 'name_font': {'size': 12}})
         chartSNRDist.set_x_axis({
             'name': 'Frequency (Hz)',
             'log_base': 10,
@@ -1046,7 +1074,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
             'num_font': {'size': 12}
         })
         chartSNRDist.set_y_axis({
-            'name': 'SNR Distance-Specific (dB)',
+            'name': 'SNR File-Specific (Linear)',
             'label_position': 'low',
             'name_layout': {'x': 0.02, 'y': 0.5},
             'name_font': {'size': 12},
@@ -1056,8 +1084,144 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         chartSNRDist.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
         chartSNRDist.set_legend({'font': {'size': 12}})
         
-        # Insert distance-specific SNR chart into worksheet
+        # Insert file-specific SNR chart into worksheet
         snrDistanceWorksheet.insert_chart('A1', chartSNRDist)
+        
+        # Create FFT-based SNR plot worksheet
+        snr_fft_sheet_name = 'SNR_FFT'
+        counter = 1
+        while snr_fft_sheet_name in used_worksheet_names:
+            snr_fft_sheet_name = f'SNR_FFT_{counter}'
+            counter += 1
+        used_worksheet_names.add(snr_fft_sheet_name)
+        snrFFTWorksheet = summaryWorkbook.add_worksheet(snr_fft_sheet_name)
+        
+        # Create scatter chart with straight lines for FFT-based SNR
+        chartSNRFFT = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+        
+        # First add all non-NoLeak series (colorful lines in background)
+        color_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' not in series_info['sheet_name']:
+                series_config = {
+                    'name': series_info['sheet_name'],
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 12, series_info['data_points'], 12],     # SNR_FFT column (column M)
+                    'line': {'width': 2}
+                }
+                # Apply distinguishable color for regular series
+                regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+                series_config['line']['color'] = regular_color
+                color_index += 1
+                chartSNRFFT.add_series(series_config)
+        
+        # Then add all NoLeak series (grey lines in front)
+        grey_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' in series_info['sheet_name']:
+                # Create SNR reference line for NoLeak measurements
+                series_config = {
+                    'name': series_info['sheet_name'] + ' (Reference)',
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 12, series_info['data_points'], 12],     # SNR_FFT column (column M)
+                    'line': {'width': 1}
+                }
+                # Apply grey color
+                grey_color = grey_colors[grey_index % len(grey_colors)]
+                series_config['line']['color'] = grey_color
+                grey_index += 1
+                chartSNRFFT.add_series(series_config)
+        
+        # Configure FFT-based SNR chart
+        chartSNRFFT.set_title({'name': 'Signal-to-Noise Ratio (FFT) vs Frequency', 'name_font': {'size': 12}})
+        chartSNRFFT.set_x_axis({
+            'name': 'Frequency (Hz)',
+            'log_base': 10,
+            'label_position': 'low',
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFT.set_y_axis({
+            'name': 'SNR FFT (Linear)',
+            'label_position': 'low',
+            'name_layout': {'x': 0.02, 'y': 0.5},
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFT.set_size({'width': 1400, 'height': 700})
+        chartSNRFFT.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+        chartSNRFFT.set_legend({'font': {'size': 12}})
+        
+        # Insert FFT-based SNR chart into worksheet
+        snrFFTWorksheet.insert_chart('A1', chartSNRFFT)
+        
+        # Create File-Specific FFT-based SNR plot worksheet
+        snr_fft_file_sheet_name = 'SNR_FFT_File_Specific'
+        counter = 1
+        while snr_fft_file_sheet_name in used_worksheet_names:
+            snr_fft_file_sheet_name = f'SNR_FFT_File_Specific_{counter}'
+            counter += 1
+        used_worksheet_names.add(snr_fft_file_sheet_name)
+        snrFFTFileWorksheet = summaryWorkbook.add_worksheet(snr_fft_file_sheet_name)
+        
+        # Create scatter chart with straight lines for file-specific FFT-based SNR
+        chartSNRFFTFile = summaryWorkbook.add_chart({'type': 'scatter', 'subtype': 'straight'})
+        
+        # First add all non-NoLeak series (colorful lines in background)
+        color_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' not in series_info['sheet_name']:
+                series_config = {
+                    'name': series_info['sheet_name'],
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 13, series_info['data_points'], 13],     # SNR_FFT_File column (column N)
+                    'line': {'width': 2}
+                }
+                # Apply distinguishable color for regular series
+                regular_color = distinguishable_colors[color_index % len(distinguishable_colors)]
+                series_config['line']['color'] = regular_color
+                color_index += 1
+                chartSNRFFTFile.add_series(series_config)
+        
+        # Then add all NoLeak series as reference
+        grey_index = 0
+        for series_info in chart_series_info:
+            if 'NoLeak' in series_info['sheet_name']:
+                # Create SNR reference line for NoLeak measurements (should be around 1.0 for file-specific linear)
+                series_config = {
+                    'name': series_info['sheet_name'] + ' (File Ref)',
+                    'categories': [series_info['sheet_name'], 1, 2, series_info['data_points'], 2],  # Frequency column (column C)
+                    'values': [series_info['sheet_name'], 1, 13, series_info['data_points'], 13],     # SNR_FFT_File column (column N)
+                    'line': {'width': 1}
+                }
+                # Apply grey color
+                grey_color = grey_colors[grey_index % len(grey_colors)]
+                series_config['line']['color'] = grey_color
+                grey_index += 1
+                chartSNRFFTFile.add_series(series_config)
+        
+        # Configure file-specific FFT-based SNR chart
+        chartSNRFFTFile.set_title({'name': 'File-Specific Signal-to-Noise Ratio (FFT) vs Frequency', 'name_font': {'size': 12}})
+        chartSNRFFTFile.set_x_axis({
+            'name': 'Frequency (Hz)',
+            'log_base': 10,
+            'label_position': 'low',
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFTFile.set_y_axis({
+            'name': 'SNR FFT File-Specific (Linear)',
+            'label_position': 'low',
+            'name_layout': {'x': 0.02, 'y': 0.5},
+            'name_font': {'size': 12},
+            'num_font': {'size': 12}
+        })
+        chartSNRFFTFile.set_size({'width': 1400, 'height': 700})
+        chartSNRFFTFile.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+        chartSNRFFTFile.set_legend({'font': {'size': 12}})
+        
+        # Insert file-specific FFT-based SNR chart into worksheet
+        snrFFTFileWorksheet.insert_chart('A1', chartSNRFFTFile)
     
         # Create Leak Detection Results worksheet
         if leak_detection_results and isinstance(leak_detection_results, dict):
@@ -1137,12 +1301,12 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 leakDetectionWorksheet.write(row, 0, 'Average Composite Score:')
                 leakDetectionWorksheet.write(row, 1, round(avg_composite, 1))
 
-        # Create Distance-Specific Leak Detection Results worksheet
+        # Create File-Specific Leak Detection Results worksheet
         if leak_detection_distance_specific and isinstance(leak_detection_distance_specific, dict):
-            distance_detection_sheet_name = 'Distance_Specific_Detection'
+            distance_detection_sheet_name = 'File_Specific_Detection'
             counter = 1
             while distance_detection_sheet_name in used_worksheet_names:
-                distance_detection_sheet_name = f'Distance_Specific_Detection_{counter}'
+                distance_detection_sheet_name = f'File_Specific_Detection_{counter}'
                 counter += 1
             used_worksheet_names.add(distance_detection_sheet_name)
             distanceDetectionWorksheet = summaryWorkbook.add_worksheet(distance_detection_sheet_name)
@@ -1185,9 +1349,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 
                 row += 1
             
-            # Add distance-specific frequency band analysis details
+            # Add file-specific frequency band analysis details
             row += 2
-            distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Frequency Band Analysis:')
+            distanceDetectionWorksheet.write(row, 0, 'File-Specific Frequency Band Analysis:')
             row += 1
             
             # Headers for frequency band details
@@ -1208,9 +1372,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                         distanceDetectionWorksheet.write(row, 5, 'YES' if band_result['leak_detected'] else 'NO')
                         row += 1
             
-            # Add distance-specific summary statistics
+            # Add file-specific summary statistics
             row += 2
-            distanceDetectionWorksheet.write(row, 0, 'Distance-Specific Detection Summary:')
+            distanceDetectionWorksheet.write(row, 0, 'File-Specific Detection Summary:')
             row += 1
             
             # Group results by distance for summary
@@ -1258,6 +1422,9 @@ def extract_number_before_m(filename):
     match = re.search(r'(\d+)m', filename)
     return int(match.group(1)) if match else float('inf')
 
+# Store all folders' analysis data for summary comparison
+all_folders_data = {}
+
 # Main processing loop - process each folder separately
 for subfolder in subfolders:
     subfolder_path = os.path.join(path, subfolder)
@@ -1277,8 +1444,401 @@ for subfolder in subfolders:
     folder_data = process_wav_files_in_folder(subfolder_path)
     total_segments += len(folder_data)
     
+    # Store folder data for summary comparison
+    all_folders_data[subfolder] = folder_data
+    
     # Process and analyze this folder's data
     process_folder_analysis(subfolder_path, subfolder, folder_data)
+
+# Create summary comparison file
+def create_summary_comparison(all_folders_data, base_path):
+    """Create a summary comparison Excel file across all subfolders"""
+    
+    if not all_folders_data:
+        print("No data available for summary comparison")
+        return
+    
+    # Create summary comparison file
+    summary_path = os.path.join(base_path, "summary_comparison.xlsx")
+    summaryComparisonWorkbook = xlsxwriter.Workbook(summary_path, {'nan_inf_to_errors': True})
+    
+    print(f"\nCreating summary comparison file: {summary_path}")
+    
+    # Collect all analysis data from all folders
+    all_analysis_data = []
+    folder_mapping = {}  # Maps filename to folder name
+    
+    for folder_name, folder_data in all_folders_data.items():
+        for fName, DataFrame in folder_data:
+            # Process the data similar to individual folder processing
+            DataFrameSize = len(DataFrame)
+            
+            if n_AVG <= DataFrameSize//n_samples:
+                time_Array = DataFrame[0][0:n_samples].to_numpy()
+                
+                N = len(time_Array)
+                
+                # Calculate sampling rate
+                listSampleRate = []
+                for i in range(1, N):
+                    sampleRate = time_Array[i] - time_Array[i-1]
+                    listSampleRate.append(sampleRate)
+                
+                st = sum(listSampleRate) / len(listSampleRate)
+                st = round(st, 9)
+                fs = 1 / st
+                
+                fftFreq = np.fft.fftfreq(N, st)
+                hanning_window = np.hanning(N)
+                
+                # Process FFT data
+                fft = []
+                for j in range(n_AVG):
+                    data_Array = DataFrame[1][j*n_samples:(j+1)*n_samples].to_numpy()
+                    data_Array = np.transpose(data_Array)
+                    windowed_data = data_Array * hanning_window
+                    fft.append(np.fft.fft(windowed_data))
+                
+                fftAbs = np.abs(fft)/N*2*2
+                fftAbs_MIN = np.min(fftAbs, axis=0)
+                
+                # Calculate PSD
+                hanning_correction = 8/3
+                psd = []
+                for j in range(n_AVG):
+                    psd_single = (np.abs(fft[j])**2) / (N * fs) * hanning_correction
+                    psd.append(psd_single)
+                
+                psd_AVG = np.mean(psd, axis=0)
+                
+                # Store analysis data
+                analysis_entry = {
+                    'folder': folder_name,
+                    'filename': fName,
+                    'frequency': fftFreq[:N//2],
+                    'psd_avg': psd_AVG[:N//2],
+                    'fft_abs_min': fftAbs_MIN[:N//2],
+                    'is_noleak': 'noleak' in fName.lower()
+                }
+                
+                all_analysis_data.append(analysis_entry)
+                folder_mapping[fName] = folder_name
+    
+    # Create FFT Bands SNR Comparison Table
+    create_fft_bands_snr_comparison(summaryComparisonWorkbook, all_analysis_data)
+    
+    # Create overall summary statistics
+    create_overall_summary_statistics(summaryComparisonWorkbook, all_analysis_data)
+    
+    # Close the workbook
+    summaryComparisonWorkbook.close()
+    print(f"Summary comparison file created successfully: {summary_path}")
+
+def create_fft_bands_snr_comparison(workbook, all_analysis_data):
+    """Create FFT bands SNR comparison table across all folders"""
+    
+    # Create worksheet
+    worksheet = workbook.add_worksheet('FFT_Bands_SNR_Comparison')
+    
+    # Define frequency bands for analysis (same as leak detection)
+    frequency_bands = [
+        # Very low frequency bands (1-100 Hz) - 10 bands
+        ('Ultra-Low (1-10Hz)', 1, 10),       # Ultra-low frequency structural
+        ('Very Low (10-20Hz)', 10, 20),      # Very low frequency vibrations
+        ('Low Structural (20-30Hz)', 20, 30),      # Low frequency structural response
+        ('Mechanical (30-40Hz)', 30, 40),      # Mechanical vibrations
+        ('Power Harmonics (40-50Hz)', 40, 50),      # Power line and mechanical harmonics
+        ('Power Frequency (50-60Hz)', 50, 60),      # Power frequency range
+        ('Post-Power (60-70Hz)', 60, 70),      # Post-power frequency
+        ('Low Acoustic (70-80Hz)', 70, 80),      # Low acoustic range
+        ('Pre-Acoustic (80-90Hz)', 80, 90),      # Pre-acoustic range
+        ('Low Acoustic Transition (90-100Hz)', 90, 100),     # Low acoustic transition
+        # Refined frequency bands
+        # 100-500 Hz range in 50 Hz increments
+        ('Low Structural 1 (100-150Hz)', 100, 150),    # Low structural range 1
+        ('Low Structural 2 (150-200Hz)', 150, 200),    # Low structural range 2
+        ('Low Structural 3 (200-250Hz)', 200, 250),    # Low structural range 3
+        ('Low Structural 4 (250-300Hz)', 250, 300),    # Low structural range 4
+        ('Low Structural 5 (300-350Hz)', 300, 350),    # Low structural range 5
+        ('Low Structural 6 (350-400Hz)', 350, 400),    # Low structural range 6
+        ('Low Structural 7 (400-450Hz)', 400, 450),    # Low structural range 7
+        ('Low Structural 8 (450-500Hz)', 450, 500),    # Low structural range 8
+        # 500-2000 Hz range in 1000 Hz jumps
+        ('Mid Frequency 1 (500-1500Hz)', 500, 1500),   # Mid frequency acoustic emissions 1
+        ('Mid Frequency 2 (1500-2000Hz)', 1500, 2000),  # Mid frequency acoustic emissions 2
+        # Original higher frequency bands
+        ('High Frequency (2000-8000Hz)', 2000, 8000),  # High frequency turbulence
+        ('Ultrasonic (8000-20000Hz)', 8000, 20000)  # Ultrasonic range
+    ]
+    
+    # Group data by folder
+    folder_groups = {}
+    for data in all_analysis_data:
+        folder = data['folder']
+        if folder not in folder_groups:
+            folder_groups[folder] = {'noleak': [], 'leak': []}
+        
+        if data['is_noleak']:
+            folder_groups[folder]['noleak'].append(data)
+        else:
+            folder_groups[folder]['leak'].append(data)
+    
+    # Get sorted folder names for column headers - sort by numbers followed by "lh" (case-insensitive)
+    def extract_lh_number(folder_name):
+        # Try to extract number followed by "lh" or "LH" (case-insensitive)
+        lh_match = re.search(r'(\d+)lh', folder_name, re.IGNORECASE)
+        if lh_match:
+            return int(lh_match.group(1))
+        else:
+            return float('inf')  # Put folders without lh pattern at the end
+    
+    sorted_folders = sorted(folder_groups.keys(), key=lambda x: (extract_lh_number(x), x))
+    
+    # Create a structure to hold all measurement/frequency band combinations (collect from all folders)
+    measurement_band_combinations = []
+    unique_measurements = set()
+    
+    # Collect all unique measurements from all folders using worksheet tab names
+    for folder_name in sorted_folders:
+        folder_data = folder_groups[folder_name]
+        if folder_data['noleak'] and folder_data['leak']:
+            leak_measurements = folder_data['leak']
+            for measurement in leak_measurements:
+                # Extract distance from filename
+                distance_match = re.search(r'(\d+)m', measurement['filename'])
+                distance = int(distance_match.group(1)) if distance_match else 0
+                
+                # Create worksheet tab name (same logic as in individual folder processing)
+                filename = measurement['filename']
+                
+                # Extract distance and any additional word after it
+                distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                if distance_match:
+                    distance_str = f"{distance_match.group(1)}m"
+                    additional_word = distance_match.group(2)  # The word after 'm' (if any)
+                    
+                    # Build distance part with additional word if present
+                    if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                        distance_part = f"{distance_str}_{additional_word}"
+                    else:
+                        distance_part = distance_str
+                else:
+                    distance_part = "Unknown"
+                
+                # Determine leak/noleak designation
+                if '_leak' in filename.lower():
+                    leak_designation = "Leak"
+                elif '_noleak' in filename.lower():
+                    leak_designation = "NoLeak"
+                else:
+                    leak_designation = "Unknown"
+                
+                # Create worksheet name: "5m_sensor_Leak", "10m_test_NoLeak", etc.
+                worksheet_name = f"{distance_part}_{leak_designation}"
+                
+                # Add to unique measurements set using worksheet name
+                measurement_key = (worksheet_name, distance)
+                unique_measurements.add(measurement_key)
+    
+    # Create combinations for all unique measurements and all frequency bands
+    # Sort measurements by distance first, then by worksheet name (same as tab order)
+    sorted_measurements = sorted(unique_measurements, key=lambda x: (x[1], x[0]))  # Sort by distance, then worksheet name
+    
+    for worksheet_name, distance in sorted_measurements:
+        for band_name, freq_min, freq_max in frequency_bands:
+            combination = (worksheet_name, distance, band_name)
+            measurement_band_combinations.append(combination)
+    
+    # Write headers - basic info columns followed by folder SNR columns
+    headers = ['Measurement', 'Distance (m)', 'Frequency Band']
+    for folder_name in sorted_folders:
+        headers.append(f'{folder_name} SNR')
+    
+    for col, header in enumerate(headers):
+        worksheet.write(0, col, header)
+    
+    # Calculate SNR values for each folder
+    folder_snr_data = {}
+    for folder_name in sorted_folders:
+        folder_data = folder_groups[folder_name]
+        if not folder_data['noleak'] or not folder_data['leak']:
+            continue
+        
+        # Calculate folder-specific FFT noise floor
+        folder_fft_noise = []
+        for noleak_data in folder_data['noleak']:
+            folder_fft_noise.append(noleak_data['fft_abs_min'])
+        
+        if folder_fft_noise:
+            folder_noise_floor = np.mean(np.vstack(folder_fft_noise), axis=0)
+            folder_noise_floor = np.maximum(folder_noise_floor, np.finfo(float).eps)
+            
+            folder_snr_data[folder_name] = {}
+            
+            # Process leak measurements
+            leak_measurements = folder_data['leak']
+            for measurement in leak_measurements:
+                # Calculate SNR for each frequency band
+                freq = measurement['frequency']
+                signal = measurement['fft_abs_min']
+                snr_values = signal / folder_noise_floor
+                
+                # Create worksheet tab name (same logic as in individual folder processing)
+                filename = measurement['filename']
+                
+                # Extract distance and any additional word after it
+                distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                if distance_match:
+                    distance_str = f"{distance_match.group(1)}m"
+                    additional_word = distance_match.group(2)  # The word after 'm' (if any)
+                    
+                    # Build distance part with additional word if present
+                    if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                        distance_part = f"{distance_str}_{additional_word}"
+                    else:
+                        distance_part = distance_str
+                else:
+                    distance_part = "Unknown"
+                
+                # Determine leak/noleak designation
+                if '_leak' in filename.lower():
+                    leak_designation = "Leak"
+                elif '_noleak' in filename.lower():
+                    leak_designation = "NoLeak"
+                else:
+                    leak_designation = "Unknown"
+                
+                # Create worksheet name: "5m_sensor_Leak", "10m_test_NoLeak", etc.
+                worksheet_name = f"{distance_part}_{leak_designation}"
+                
+                for band_name, freq_min, freq_max in frequency_bands:
+                    # Find frequency indices for this band
+                    band_mask = (freq >= freq_min) & (freq <= freq_max)
+                    
+                    if np.any(band_mask):
+                        band_snr = np.mean(snr_values[band_mask])
+                        key = (worksheet_name, band_name)
+                        folder_snr_data[folder_name][key] = band_snr
+    
+    # Write data rows
+    row = 1
+    for worksheet_name, distance, band_name in measurement_band_combinations:
+        # Write basic info
+        worksheet.write(row, 0, worksheet_name)
+        worksheet.write(row, 1, distance)
+        worksheet.write(row, 2, band_name)
+        
+        # Write SNR values for each folder
+        for col_idx, folder_name in enumerate(sorted_folders):
+            if folder_name in folder_snr_data:
+                key = (worksheet_name, band_name)
+                if key in folder_snr_data[folder_name]:
+                    snr_value = folder_snr_data[folder_name][key]
+                    worksheet.write(row, 3 + col_idx, round(snr_value, 3))
+                else:
+                    worksheet.write(row, 3 + col_idx, 'N/A')
+            else:
+                worksheet.write(row, 3 + col_idx, 'No Data')
+        
+        row += 1
+    
+    # Add summary statistics section
+    row += 2
+    worksheet.write(row, 0, 'SUMMARY STATISTICS')
+    row += 2
+    
+    # Calculate folder averages for each frequency band
+    worksheet.write(row, 0, 'Average SNR by Frequency Band:')
+    row += 1
+    
+    # Write summary headers
+    summary_headers = ['Frequency Band']
+    for folder_name in sorted_folders:
+        summary_headers.append(f'{folder_name} Avg SNR')
+    
+    for col, header in enumerate(summary_headers):
+        worksheet.write(row, col, header)
+    row += 1
+    
+    # Calculate and write summary statistics
+    for band_name, freq_min, freq_max in frequency_bands:
+        worksheet.write(row, 0, band_name)
+        
+        for col_idx, folder_name in enumerate(sorted_folders):
+            if folder_name in folder_snr_data:
+                # Collect all SNR values for this band in this folder
+                band_snr_values = []
+                for key, snr_value in folder_snr_data[folder_name].items():
+                    if key[1] == band_name:  # key[1] is the band_name
+                        band_snr_values.append(snr_value)
+                
+                if band_snr_values:
+                    avg_snr = np.mean(band_snr_values)
+                    worksheet.write(row, 1 + col_idx, round(avg_snr, 3))
+                else:
+                    worksheet.write(row, 1 + col_idx, 'N/A')
+            else:
+                worksheet.write(row, 1 + col_idx, 'No Data')
+        
+        row += 1
+
+def create_overall_summary_statistics(workbook, all_analysis_data):
+    """Create overall summary statistics worksheet"""
+    
+    worksheet = workbook.add_worksheet('Overall_Summary')
+    
+    # Group data by folder
+    folder_stats = {}
+    for data in all_analysis_data:
+        folder = data['folder']
+        if folder not in folder_stats:
+            folder_stats[folder] = {'total_files': 0, 'noleak_files': 0, 'leak_files': 0, 'distances': set()}
+        
+        folder_stats[folder]['total_files'] += 1
+        
+        if data['is_noleak']:
+            folder_stats[folder]['noleak_files'] += 1
+        else:
+            folder_stats[folder]['leak_files'] += 1
+        
+        # Extract distance
+        distance_match = re.search(r'(\d+)m', data['filename'])
+        if distance_match:
+            folder_stats[folder]['distances'].add(distance_match.group(1))
+    
+    # Write headers
+    headers = ['Folder', 'Total Files', 'NoLeak Files', 'Leak Files', 'Distances Tested']
+    for col, header in enumerate(headers):
+        worksheet.write(0, col, header)
+    
+    row = 1
+    
+    # Write folder statistics
+    for folder_name, stats in folder_stats.items():
+        worksheet.write(row, 0, folder_name)
+        worksheet.write(row, 1, stats['total_files'])
+        worksheet.write(row, 2, stats['noleak_files'])
+        worksheet.write(row, 3, stats['leak_files'])
+        distances_str = ', '.join(sorted(stats['distances'], key=int)) + 'm'
+        worksheet.write(row, 4, distances_str)
+        row += 1
+    
+    # Add totals
+    row += 1
+    worksheet.write(row, 0, 'TOTALS:')
+    worksheet.write(row, 1, sum(stats['total_files'] for stats in folder_stats.values()))
+    worksheet.write(row, 2, sum(stats['noleak_files'] for stats in folder_stats.values()))
+    worksheet.write(row, 3, sum(stats['leak_files'] for stats in folder_stats.values()))
+    
+    # All unique distances
+    all_distances = set()
+    for stats in folder_stats.values():
+        all_distances.update(stats['distances'])
+    distances_str = ', '.join(sorted(all_distances, key=int)) + 'm'
+    worksheet.write(row, 4, distances_str)
+
+# Create the summary comparison file
+create_summary_comparison(all_folders_data, path)
 
 print(f"\n" + "="*50)
 print(f"🎵 ANALYSIS COMPLETE")
@@ -1288,7 +1848,9 @@ print(f"- Total WAV files with distance pattern processed: {total_wav_files}")
 print(f"- Total segments extracted: {total_segments}")
 distance_pattern = r'\d+m'
 print(f"- Analysis files created: {len([f for f in subfolders if len([x for x in os.listdir(os.path.join(path, f)) if x.lower().endswith('.wav') and re.search(distance_pattern, x)]) > 0])}")
+print(f"- Summary comparison file created: summary_comparison.xlsx")
 print(f"\nNote: Only WAV files containing distance pattern (number + 'm') were processed.")
 print(f"Each folder with valid files now contains its own analysis summary file.")
+print(f"The summary_comparison.xlsx file contains cross-folder FFT bands SNR analysis.")
 
 print('OK')
