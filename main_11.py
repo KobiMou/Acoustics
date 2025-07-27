@@ -302,7 +302,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 fft.append(np.fft.fft(windowed_data))
             
             # Calculate fftAbs after all FFTs are computed
-            fftAbs = np.abs(fft)/N*2  # Normalize result for correct amplitude (×2 for Hanning window amplitude correction)
+            fftAbs = np.abs(fft)/N*2*2 # Normalize result for correct amplitude (×2 for single-sided FFT, ×2 for Hanning window compensation)
         
         fft_AVG = np.mean(fft, axis=0)  
         fftAbs_AVG = np.mean(fftAbs, axis=0)    
