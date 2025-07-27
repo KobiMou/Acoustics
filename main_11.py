@@ -302,7 +302,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 fft.append(np.fft.fft(windowed_data))
             
             # Calculate fftAbs after all FFTs are computed
-            fftAbs = np.abs(fft)/N*2*2 # Normalize result for correct amplitude (×2 for Hanning window compensation)
+            fftAbs = np.abs(fft)/N*2  # Normalize result for correct amplitude (×2 for Hanning window amplitude correction)
         
         fft_AVG = np.mean(fft, axis=0)  
         fftAbs_AVG = np.mean(fftAbs, axis=0)    
@@ -311,6 +311,7 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         
         # Calculate PSD (Power Spectral Density) - using improved method from reference code
         # Hanning window correction factor for PSD (compensate for power loss)
+        # Note: PSD uses power correction (8/3), while FFT amplitude uses amplitude correction (2.0)
         hanning_correction = 8/3  # Correction factor for Hanning window power
         psd = []
         for j in range(n_AVG):
