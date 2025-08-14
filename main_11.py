@@ -587,11 +587,11 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         if noleak_psd_data:
             # Create global noise floor baseline
             noise_floor = np.mean(np.vstack(noleak_psd_data), axis=0)
-            noise_floor = np.maximum(noise_floor, np.finfo(float).eps)  # Avoid division by zero
+            noise_floor = np.maximum(noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
             
             # Create global FFT-based noise floor baseline
             fft_noise_floor = np.mean(np.vstack(noleak_fft_data), axis=0)
-            fft_noise_floor = np.maximum(fft_noise_floor, np.finfo(float).eps)  # Avoid division by zero
+            fft_noise_floor = np.maximum(fft_noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
             
             # Update SNR data for all measurements
             for data in analysis_data:
@@ -992,11 +992,11 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 if group['noleak']:
                     # Create WAV file-specific noise floor (each WAV file uses only its own NoLeak data)
                     wav_file_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
-                    wav_file_noise_floor = np.maximum(wav_file_noise_floor, np.finfo(float).eps)
+                    wav_file_noise_floor = np.maximum(wav_file_noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
                     
                     # Create WAV file-specific FFT-based noise floor
                     wav_file_fft_noise_floor = np.mean(np.vstack([data['fft_abs_min'] for data in group['noleak']]), axis=0)
-                    wav_file_fft_noise_floor = np.maximum(wav_file_fft_noise_floor, np.finfo(float).eps)
+                    wav_file_fft_noise_floor = np.maximum(wav_file_fft_noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
                     
                     # Calculate SNR for all measurements from this WAV file
                     for data in group['all_measurements']:
@@ -1679,7 +1679,7 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
         
         if folder_fft_noise:
             folder_noise_floor = np.mean(np.vstack(folder_fft_noise), axis=0)
-            folder_noise_floor = np.maximum(folder_noise_floor, np.finfo(float).eps)
+            folder_noise_floor = np.maximum(folder_noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
             
             folder_snr_data[folder_name] = {}
             
@@ -1953,7 +1953,7 @@ def create_snr_frequency_bands_plot(workbook, all_analysis_data):
         
         if folder_fft_noise:
             folder_noise_floor = np.mean(np.vstack(folder_fft_noise), axis=0)
-            folder_noise_floor = np.maximum(folder_noise_floor, np.finfo(float).eps)
+            folder_noise_floor = np.maximum(folder_noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
             
             # Process leak measurements
             leak_measurements = folder_data['leak']
@@ -2225,7 +2225,7 @@ def create_file_specific_fft_bands_snr_comparison(workbook, all_analysis_data):
             
             if file_fft_noise:
                 file_noise_floor = np.mean(np.vstack(file_fft_noise), axis=0)
-                file_noise_floor = np.maximum(file_noise_floor, np.finfo(float).eps)
+                file_noise_floor = np.maximum(file_noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
                 
                 # Process leak measurements
                 leak_measurements = file_data['leak']
@@ -2542,7 +2542,7 @@ def create_file_specific_snr_frequency_bands_plot(workbook, all_analysis_data):
             
             if file_fft_noise:
                 file_noise_floor = np.mean(np.vstack(file_fft_noise), axis=0)
-                file_noise_floor = np.maximum(file_noise_floor, np.finfo(float).eps)
+                file_noise_floor = np.maximum(file_noise_floor, 1.0)  # Use minimum value of 1 for SNR calculation
                 
                 # Process leak measurements
                 leak_measurements = file_data['leak']
