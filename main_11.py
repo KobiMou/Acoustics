@@ -1681,10 +1681,14 @@ def create_summary_comparison(all_folders_data, base_path):
     # Create SNR vs Frequency Bands plot
     create_snr_frequency_bands_plot(summaryComparisonWorkbook, all_analysis_data)
     
+    # Create Signal Minus Noise vs Frequency Bands plot
+    create_signal_minus_noise_frequency_bands_plot(summaryComparisonWorkbook, all_analysis_data)
+    
     # Create file-specific SNR analysis tabs
     create_file_specific_fft_bands_snr_comparison(summaryComparisonWorkbook, all_analysis_data)
     create_file_specific_overall_summary_statistics(summaryComparisonWorkbook, all_analysis_data)
     create_file_specific_snr_frequency_bands_plot(summaryComparisonWorkbook, all_analysis_data)
+    create_file_specific_signal_minus_noise_plot(summaryComparisonWorkbook, all_analysis_data)
     
     # Close the workbook
     summaryComparisonWorkbook.close()
@@ -2219,6 +2223,252 @@ def create_snr_frequency_bands_plot(workbook, all_analysis_data):
     })
     chart.set_y_axis({
         'name': 'SNR (Linear)',
+        'label_position': 'low',
+        'name_layout': {'x': 0.02, 'y': 0.5},
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chart.set_size({'width': 1400, 'height': 700})
+    chart.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+    chart.set_legend({'font': {'size': 12}})
+    
+    # Insert chart into worksheet
+    plot_worksheet.insert_chart('A' + str(len(frequency_bands) + 3), chart)
+
+def create_signal_minus_noise_frequency_bands_plot(workbook, all_analysis_data):
+    """Create Signal Minus Noise vs Frequency Bands plot worksheet"""
+    
+    # Create worksheet
+    plot_worksheet = workbook.add_worksheet('Signal_Minus_Noise_Frequency_Bands_Plot')
+    
+    # Define frequency bands for analysis (same as leak detection)
+    frequency_bands = [
+        # Very low frequency bands (1-100 Hz) - 10 bands
+        ('Ultra-Low (1-10Hz)', 1, 10),
+        ('Very Low (10-20Hz)', 10, 20),
+        ('Low Structural (20-30Hz)', 20, 30),
+        ('Mechanical (30-40Hz)', 30, 40),
+        ('Power Harmonics (40-50Hz)', 40, 50),
+        ('Power Frequency (50-60Hz)', 50, 60),
+        ('Post-Power (60-70Hz)', 60, 70),
+        ('Low Acoustic (70-80Hz)', 70, 80),
+        ('Pre-Acoustic (80-90Hz)', 80, 90),
+        ('Low Acoustic Transition (90-100Hz)', 90, 100),
+        # Refined frequency bands
+        ('Low Structural 1 (100-150Hz)', 100, 150),
+        ('Low Structural 2 (150-200Hz)', 150, 200),
+        ('Low Structural 3 (200-250Hz)', 200, 250),
+        ('Low Structural 4 (250-300Hz)', 250, 300),
+        ('Low Structural 5 (300-350Hz)', 300, 350),
+        ('Low Structural 6 (350-400Hz)', 350, 400),
+        ('Low Structural 7 (400-450Hz)', 400, 450),
+        ('Low Structural 8 (450-500Hz)', 450, 500),
+        ('Mid Frequency 1 (500-1500Hz)', 500, 1500),
+        ('Mid Frequency 2 (1500-2000Hz)', 1500, 2000),
+        ('High Frequency (2000-8000Hz)', 2000, 8000),
+        ('Ultrasonic (8000-20000Hz)', 8000, 20000)
+    ]
+    
+    # Group data by folder
+    folder_groups = {}
+    for data in all_analysis_data:
+        folder = data['folder']
+        if folder not in folder_groups:
+            folder_groups[folder] = {'noleak': [], 'leak': []}
+        
+        if data['is_noleak']:
+            folder_groups[folder]['noleak'].append(data)
+        else:
+            folder_groups[folder]['leak'].append(data)
+    
+    # Get sorted folder names
+    def extract_lh_number(folder_name):
+        lh_match = re.search(r'(\d+)lh', folder_name, re.IGNORECASE)
+        if lh_match:
+            return int(lh_match.group(1))
+        else:
+            return float('inf')
+    
+    sorted_folders = sorted(folder_groups.keys(), key=lambda x: (extract_lh_number(x), x))
+    
+    # Collect unique measurement types
+    unique_measurements = set()
+    
+    for folder_name in sorted_folders:
+        folder_data = folder_groups[folder_name]
+        if folder_data['noleak'] and folder_data['leak']:
+            leak_measurements = folder_data['leak']
+            for measurement in leak_measurements:
+                # Extract measurement name (same logic as in FFT bands comparison)
+                filename = measurement['filename']
+                
+                distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                if distance_match:
+                    distance_str = f"{distance_match.group(1)}m"
+                    additional_word = distance_match.group(2)
+                    
+                    if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                        distance_part = f"{distance_str}_{additional_word}"
+                    else:
+                        distance_part = distance_str
+                else:
+                    distance_part = "Unknown"
+                
+                if '_leak' in filename.lower():
+                    leak_designation = "Leak"
+                elif '_noleak' in filename.lower():
+                    leak_designation = "NoLeak"
+                else:
+                    leak_designation = "Unknown"
+                
+                worksheet_name = f"{distance_part}_{leak_designation}"
+                distance = int(distance_match.group(1)) if distance_match else 0
+                
+                unique_measurements.add((worksheet_name, distance))
+    
+    # Sort measurements by distance
+    sorted_measurements = sorted(unique_measurements, key=lambda x: (x[1], x[0]))
+    
+    # Calculate Signal Minus Noise data for plotting
+    plot_data = {}
+    for folder_name in sorted_folders:
+        folder_data = folder_groups[folder_name]
+        if not folder_data['noleak'] or not folder_data['leak']:
+            continue
+        
+        # Calculate folder-specific FFT noise floor (all NoLeak data from this folder)
+        folder_fft_noise = []
+        for noleak_data in folder_data['noleak']:
+            folder_fft_noise.append(noleak_data['fft_abs_min'])
+        
+        if folder_fft_noise:
+            folder_noise_floor = np.mean(np.vstack(folder_fft_noise), axis=0)
+            # Note: No need for eps protection since we're doing subtraction, not division
+            
+            # Process leak measurements
+            leak_measurements = folder_data['leak']
+            for measurement in leak_measurements:
+                # Get measurement name
+                filename = measurement['filename']
+                
+                distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                if distance_match:
+                    distance_str = f"{distance_match.group(1)}m"
+                    additional_word = distance_match.group(2)
+                    
+                    if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                        distance_part = f"{distance_str}_{additional_word}"
+                    else:
+                        distance_part = distance_str
+                else:
+                    distance_part = "Unknown"
+                
+                worksheet_name = f"{distance_part}_Leak"
+                
+                # Get frequency and signal data for band Signal Minus Noise calculation
+                freq = measurement['frequency']
+                signal = measurement['fft_abs_min']
+                
+                measurement_key = f"{worksheet_name}_{folder_name}"
+                if measurement_key not in plot_data:
+                    plot_data[measurement_key] = {}
+                
+                for band_name, freq_min, freq_max in frequency_bands:
+                    band_mask = (freq >= freq_min) & (freq <= freq_max)
+                    
+                    if np.any(band_mask):
+                        # Calculate signal minus noise: average signal minus average noise
+                        band_signal = signal[band_mask]
+                        band_noise = folder_noise_floor[band_mask]
+                        signal_minus_noise = np.mean(band_signal) - np.mean(band_noise)
+                        
+                        # Ensure non-negative values (signal can't be below noise floor in meaningful analysis)
+                        signal_minus_noise = max(0, signal_minus_noise)
+                        
+                        # Average with existing data if multiple measurements per key
+                        if band_name in plot_data[measurement_key]:
+                            plot_data[measurement_key][band_name] = (plot_data[measurement_key][band_name] + signal_minus_noise) / 2
+                        else:
+                            plot_data[measurement_key][band_name] = signal_minus_noise
+    
+    # Prepare data for Excel chart
+    # Write frequency band names in first column
+    row = 0
+    plot_worksheet.write(row, 0, 'Frequency Band')
+    
+    # Write measurement type headers
+    col = 1
+    measurement_columns = {}
+    for measurement_name, distance in sorted_measurements:
+        for folder_name in sorted_folders:
+            measurement_key = f"{measurement_name}_{folder_name}"
+            if measurement_key in plot_data:
+                header = f"{measurement_name} ({folder_name})"
+                plot_worksheet.write(row, col, header)
+                measurement_columns[measurement_key] = col
+                col += 1
+    
+    # Write frequency band data
+    row = 1
+    for band_name, freq_min, freq_max in frequency_bands:
+        plot_worksheet.write(row, 0, band_name)
+        
+        for measurement_key, col_idx in measurement_columns.items():
+            if band_name in plot_data[measurement_key]:
+                signal_minus_noise_value = plot_data[measurement_key][band_name]
+                plot_worksheet.write(row, col_idx, round(signal_minus_noise_value, 6))
+            else:
+                plot_worksheet.write(row, col_idx, 0)
+        
+        row += 1
+    
+    # Create the chart
+    chart = workbook.add_chart({'type': 'line'})
+    
+    # Define colors (same as existing plots)
+    distinguishable_colors = ['#FF0000', '#0000FF', '#00FF00', '#FF8000', '#8000FF', '#FF0080', '#00FFFF', '#FFFF00', 
+                             '#800000', '#000080', '#008000', '#804000', '#400080', '#800040', '#008080', '#808000']
+    
+    # Add series for each measurement type
+    color_index = 0
+    for measurement_key, col_idx in measurement_columns.items():
+        # Extract measurement display name
+        parts = measurement_key.split('_')
+        if len(parts) >= 3:
+            display_name = f"{parts[0]}_{parts[1]} ({parts[2]})"
+        elif len(parts) >= 2:
+            display_name = f"{parts[0]}_{parts[1]}"
+        else:
+            display_name = measurement_key
+        
+        chart.add_series({
+            'name': display_name,
+            'categories': ['Signal_Minus_Noise_Frequency_Bands_Plot', 1, 0, len(frequency_bands), 0],  # Frequency band names
+            'values': ['Signal_Minus_Noise_Frequency_Bands_Plot', 1, col_idx, len(frequency_bands), col_idx],  # Signal minus noise values
+            'line': {
+                'color': distinguishable_colors[color_index % len(distinguishable_colors)],
+                'width': 2
+            },
+            'marker': {
+                'type': 'circle',
+                'size': 5,
+                'border': {'color': distinguishable_colors[color_index % len(distinguishable_colors)]},
+                'fill': {'color': distinguishable_colors[color_index % len(distinguishable_colors)]}
+            }
+        })
+        color_index += 1
+    
+    # Configure chart appearance (similar to existing plots)
+    chart.set_title({'name': 'Signal Minus Noise vs Frequency Bands by Measurement Type', 'name_font': {'size': 12}})
+    chart.set_x_axis({
+        'name': 'Frequency Bands',
+        'label_position': 'low',
+        'name_font': {'size': 12},
+        'num_font': {'size': 10},
+        'text_axis': True  # Treat as text categories instead of numeric
+    })
+    chart.set_y_axis({
+        'name': 'Signal Minus Noise (Amplitude Units)',
         'label_position': 'low',
         'name_layout': {'x': 0.02, 'y': 0.5},
         'name_font': {'size': 12},
@@ -2816,6 +3066,259 @@ def create_file_specific_snr_frequency_bands_plot(workbook, all_analysis_data):
     })
     chart.set_y_axis({
         'name': 'File-Specific SNR (Linear)',
+        'label_position': 'low',
+        'name_layout': {'x': 0.02, 'y': 0.5},
+        'name_font': {'size': 12},
+        'num_font': {'size': 12}
+    })
+    chart.set_size({'width': 1400, 'height': 700})
+    chart.set_plotarea({'layout': {'x': 0.15, 'y': 0.15, 'width': 0.75, 'height': 0.70}})
+    chart.set_legend({'font': {'size': 12}})
+    
+    # Insert chart into worksheet
+    plot_worksheet.insert_chart('A' + str(len(frequency_bands) + 3), chart)
+
+def create_file_specific_signal_minus_noise_plot(workbook, all_analysis_data):
+    """Create file-specific Signal Minus Noise vs Frequency Bands plot worksheet"""
+    
+    # Create worksheet
+    plot_worksheet = workbook.add_worksheet('File_Specific_Signal_Minus_Noise_Plot')
+    
+    # Define frequency bands for analysis (same as leak detection)
+    frequency_bands = [
+        # Very low frequency bands (1-100 Hz) - 10 bands
+        ('Ultra-Low (1-10Hz)', 1, 10),
+        ('Very Low (10-20Hz)', 10, 20),
+        ('Low Structural (20-30Hz)', 20, 30),
+        ('Mechanical (30-40Hz)', 30, 40),
+        ('Power Harmonics (40-50Hz)', 40, 50),
+        ('Power Frequency (50-60Hz)', 50, 60),
+        ('Post-Power (60-70Hz)', 60, 70),
+        ('Low Acoustic (70-80Hz)', 70, 80),
+        ('Pre-Acoustic (80-90Hz)', 80, 90),
+        ('Low Acoustic Transition (90-100Hz)', 90, 100),
+        # Refined frequency bands
+        ('Low Structural 1 (100-150Hz)', 100, 150),
+        ('Low Structural 2 (150-200Hz)', 150, 200),
+        ('Low Structural 3 (200-250Hz)', 200, 250),
+        ('Low Structural 4 (250-300Hz)', 250, 300),
+        ('Low Structural 5 (300-350Hz)', 300, 350),
+        ('Low Structural 6 (350-400Hz)', 350, 400),
+        ('Low Structural 7 (400-450Hz)', 400, 450),
+        ('Low Structural 8 (450-500Hz)', 450, 500),
+        ('Mid Frequency 1 (500-1500Hz)', 500, 1500),
+        ('Mid Frequency 2 (1500-2000Hz)', 1500, 2000),
+        ('High Frequency (2000-8000Hz)', 2000, 8000),
+        ('Ultrasonic (8000-20000Hz)', 8000, 20000)
+    ]
+    
+    # Group data by folder and file
+    folder_file_groups = {}
+    for data in all_analysis_data:
+        folder = data['folder']
+        # Extract base filename without _leak/_noleak suffix
+        base_filename = re.sub(r'_(leak|noleak)$', '', data['filename'])
+        
+        if folder not in folder_file_groups:
+            folder_file_groups[folder] = {}
+        
+        if base_filename not in folder_file_groups[folder]:
+            folder_file_groups[folder][base_filename] = {'noleak': [], 'leak': []}
+        
+        if data['is_noleak']:
+            folder_file_groups[folder][base_filename]['noleak'].append(data)
+        else:
+            folder_file_groups[folder][base_filename]['leak'].append(data)
+    
+    # Get sorted folder names
+    def extract_lh_number(folder_name):
+        lh_match = re.search(r'(\d+)lh', folder_name, re.IGNORECASE)
+        if lh_match:
+            return int(lh_match.group(1))
+        else:
+            return float('inf')
+    
+    sorted_folders = sorted(folder_file_groups.keys(), key=lambda x: (extract_lh_number(x), x))
+    
+    # Collect unique measurement types
+    unique_measurements = set()
+    
+    for folder_name in sorted_folders:
+        folder_data = folder_file_groups[folder_name]
+        for base_filename, file_data in folder_data.items():
+            if file_data['noleak'] and file_data['leak']:
+                leak_measurements = file_data['leak']
+                for measurement in leak_measurements:
+                    # Extract measurement name (same logic as in FFT bands comparison)
+                    filename = measurement['filename']
+                    
+                    distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                    if distance_match:
+                        distance_str = f"{distance_match.group(1)}m"
+                        additional_word = distance_match.group(2)
+                        
+                        if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                            distance_part = f"{distance_str}_{additional_word}"
+                        else:
+                            distance_part = distance_str
+                    else:
+                        distance_part = "Unknown"
+                    
+                    if '_leak' in filename.lower():
+                        leak_designation = "Leak"
+                    elif '_noleak' in filename.lower():
+                        leak_designation = "NoLeak"
+                    else:
+                        leak_designation = "Unknown"
+                    
+                    worksheet_name = f"{distance_part}_{leak_designation}"
+                    distance = int(distance_match.group(1)) if distance_match else 0
+                    
+                    unique_measurements.add((worksheet_name, distance))
+    
+    # Sort measurements by distance
+    sorted_measurements = sorted(unique_measurements, key=lambda x: (x[1], x[0]))
+    
+    # Calculate file-specific signal minus noise data for plotting
+    plot_data = {}
+    for folder_name in sorted_folders:
+        folder_data = folder_file_groups[folder_name]
+        
+        for base_filename, file_data in folder_data.items():
+            if not file_data['noleak'] or not file_data['leak']:
+                continue
+            
+            # Calculate file-specific FFT noise floor (only from this file's NoLeak data)
+            file_fft_noise = []
+            for noleak_data in file_data['noleak']:
+                file_fft_noise.append(noleak_data['fft_abs_min'])
+            
+            if file_fft_noise:
+                file_noise_floor = np.mean(np.vstack(file_fft_noise), axis=0)
+                # Note: No need for eps protection since we're doing subtraction, not division
+                
+                # Process leak measurements
+                leak_measurements = file_data['leak']
+                for measurement in leak_measurements:
+                    # Get measurement name
+                    filename = measurement['filename']
+                    
+                    distance_match = re.search(r'(\d+)m(?:[_\s]?([A-Za-z]+))?', filename)
+                    if distance_match:
+                        distance_str = f"{distance_match.group(1)}m"
+                        additional_word = distance_match.group(2)
+                        
+                        if additional_word and additional_word.lower() not in ['leak', 'noleak']:
+                            distance_part = f"{distance_str}_{additional_word}"
+                        else:
+                            distance_part = distance_str
+                    else:
+                        distance_part = "Unknown"
+                    
+                    worksheet_name = f"{distance_part}_Leak"
+                    
+                    # Get frequency and signal data for band signal minus noise calculation
+                    freq = measurement['frequency']
+                    signal = measurement['fft_abs_min']
+                    
+                    measurement_key = f"{worksheet_name}_{folder_name}_{base_filename}"
+                    if measurement_key not in plot_data:
+                        plot_data[measurement_key] = {}
+                    
+                    for band_name, freq_min, freq_max in frequency_bands:
+                        band_mask = (freq >= freq_min) & (freq <= freq_max)
+                        
+                        if np.any(band_mask):
+                            # Calculate signal minus noise: average signal minus average noise
+                            band_signal = signal[band_mask]
+                            band_noise = file_noise_floor[band_mask]
+                            signal_minus_noise = np.mean(band_signal) - np.mean(band_noise)
+                            
+                            # Ensure non-negative values (signal can't be below noise floor in meaningful analysis)
+                            signal_minus_noise = max(0, signal_minus_noise)
+                            
+                            plot_data[measurement_key][band_name] = signal_minus_noise
+    
+    # Prepare data for Excel chart
+    # Write frequency band names in first column
+    row = 0
+    plot_worksheet.write(row, 0, 'Frequency Band')
+    
+    # Write measurement type headers
+    col = 1
+    measurement_columns = {}
+    for measurement_name, distance in sorted_measurements:
+        for folder_name in sorted_folders:
+            folder_data = folder_file_groups[folder_name]
+            for base_filename in folder_data.keys():
+                measurement_key = f"{measurement_name}_{folder_name}_{base_filename}"
+                if measurement_key in plot_data:
+                    header = f"{measurement_name} ({folder_name}_{base_filename})"
+                    plot_worksheet.write(row, col, header)
+                    measurement_columns[measurement_key] = col
+                    col += 1
+    
+    # Write frequency band data
+    row = 1
+    for band_name, freq_min, freq_max in frequency_bands:
+        plot_worksheet.write(row, 0, band_name)
+        
+        for measurement_key, col_idx in measurement_columns.items():
+            if band_name in plot_data[measurement_key]:
+                signal_minus_noise_value = plot_data[measurement_key][band_name]
+                plot_worksheet.write(row, col_idx, round(signal_minus_noise_value, 6))
+            else:
+                plot_worksheet.write(row, col_idx, 0)
+        
+        row += 1
+    
+    # Create the chart
+    chart = workbook.add_chart({'type': 'line'})
+    
+    # Define colors (same as existing plots)
+    distinguishable_colors = ['#FF0000', '#0000FF', '#00FF00', '#FF8000', '#8000FF', '#FF0080', '#00FFFF', '#FFFF00', 
+                             '#800000', '#000080', '#008000', '#804000', '#400080', '#800040', '#008080', '#808000']
+    
+    # Add series for each measurement type
+    color_index = 0
+    for measurement_key, col_idx in measurement_columns.items():
+        # Extract measurement display name
+        parts = measurement_key.split('_')
+        if len(parts) >= 4:
+            display_name = f"{parts[0]}_{parts[1]} ({parts[2]}_{parts[3]})"
+        elif len(parts) >= 3:
+            display_name = f"{parts[0]}_{parts[1]} ({parts[2]})"
+        else:
+            display_name = measurement_key
+        
+        chart.add_series({
+            'name': display_name,
+            'categories': ['File_Specific_Signal_Minus_Noise_Plot', 1, 0, len(frequency_bands), 0],  # Frequency band names
+            'values': ['File_Specific_Signal_Minus_Noise_Plot', 1, col_idx, len(frequency_bands), col_idx],  # Signal minus noise values
+            'line': {
+                'color': distinguishable_colors[color_index % len(distinguishable_colors)],
+                'width': 2
+            },
+            'marker': {
+                'type': 'circle',
+                'size': 5,
+                'border': {'color': distinguishable_colors[color_index % len(distinguishable_colors)]},
+                'fill': {'color': distinguishable_colors[color_index % len(distinguishable_colors)]}
+            }
+        })
+        color_index += 1
+    
+    # Configure chart appearance (similar to existing plots)
+    chart.set_title({'name': 'File-Specific Signal Minus Noise vs Frequency Bands by Measurement Type', 'name_font': {'size': 12}})
+    chart.set_x_axis({
+        'name': 'Frequency Bands',
+        'label_position': 'low',
+        'name_font': {'size': 12},
+        'num_font': {'size': 10},
+        'text_axis': True  # Treat as text categories instead of numeric
+    })
+    chart.set_y_axis({
+        'name': 'Signal Minus Noise (Amplitude Units)',
         'label_position': 'low',
         'name_layout': {'x': 0.02, 'y': 0.5},
         'name_font': {'size': 12},
