@@ -11,7 +11,7 @@ import soundfile as sf
 from scipy.io import wavfile
 
 # Update path to point to folder containing folders with WAV files
-path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_20_07_2025_charge_AW\WAV'
+path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_05_08_2025_buff\WAV'
 
 # Get all subfolders in the main path
 subfolders = [f for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]
@@ -1686,10 +1686,9 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
             # Process leak measurements
             leak_measurements = folder_data['leak']
             for measurement in leak_measurements:
-                # Calculate SNR for each frequency band
+                # Get frequency and signal data
                 freq = measurement['frequency']
                 signal = measurement['fft_abs_min']
-                snr_values = signal / folder_noise_floor
                 
                 # Create worksheet tab name (same logic as in individual folder processing)
                 filename = measurement['filename']
@@ -1724,7 +1723,10 @@ def create_fft_bands_snr_comparison(workbook, all_analysis_data):
                     band_mask = (freq >= freq_min) & (freq <= freq_max)
                     
                     if np.any(band_mask):
-                        band_snr = np.mean(snr_values[band_mask])
+                        # Use band-averaged approach: average signal and noise separately, then divide
+                        band_signal = signal[band_mask]
+                        band_noise = folder_noise_floor[band_mask]
+                        band_snr = np.mean(band_signal) / np.mean(band_noise)
                         key = (worksheet_name, band_name)
                         folder_snr_data[folder_name][key] = band_snr
     
@@ -1975,10 +1977,9 @@ def create_snr_frequency_bands_plot(workbook, all_analysis_data):
                 
                 worksheet_name = f"{distance_part}_Leak"
                 
-                # Calculate SNR for each frequency band
+                # Get frequency and signal data for band SNR calculation
                 freq = measurement['frequency']
                 signal = measurement['fft_abs_min']
-                snr_values = signal / folder_noise_floor
                 
                 measurement_key = f"{worksheet_name}_{folder_name}"
                 if measurement_key not in plot_data:
@@ -1988,7 +1989,10 @@ def create_snr_frequency_bands_plot(workbook, all_analysis_data):
                     band_mask = (freq >= freq_min) & (freq <= freq_max)
                     
                     if np.any(band_mask):
-                        band_snr = np.mean(snr_values[band_mask])
+                        # Use band-averaged approach: average signal and noise separately, then divide
+                        band_signal = signal[band_mask]
+                        band_noise = folder_noise_floor[band_mask]
+                        band_snr = np.mean(band_signal) / np.mean(band_noise)
                         plot_data[measurement_key][band_name] = band_snr
     
     # Prepare data for Excel chart
@@ -2230,10 +2234,9 @@ def create_file_specific_fft_bands_snr_comparison(workbook, all_analysis_data):
                 # Process leak measurements
                 leak_measurements = file_data['leak']
                 for measurement in leak_measurements:
-                    # Calculate SNR for each frequency band
+                    # Get frequency and signal data
                     freq = measurement['frequency']
                     signal = measurement['fft_abs_min']
-                    snr_values = signal / file_noise_floor
                     
                     # Create worksheet tab name (same logic as in individual folder processing)
                     filename = measurement['filename']
@@ -2268,7 +2271,10 @@ def create_file_specific_fft_bands_snr_comparison(workbook, all_analysis_data):
                         band_mask = (freq >= freq_min) & (freq <= freq_max)
                         
                         if np.any(band_mask):
-                            band_snr = np.mean(snr_values[band_mask])
+                            # Use band-averaged approach: average signal and noise separately, then divide
+                            band_signal = signal[band_mask]
+                            band_noise = file_noise_floor[band_mask]
+                            band_snr = np.mean(band_signal) / np.mean(band_noise)
                             key = (worksheet_name, band_name)
                             folder_snr_data[folder_name][key] = band_snr
     
@@ -2564,10 +2570,9 @@ def create_file_specific_snr_frequency_bands_plot(workbook, all_analysis_data):
                     
                     worksheet_name = f"{distance_part}_Leak"
                     
-                    # Calculate SNR for each frequency band
+                    # Get frequency and signal data for band SNR calculation
                     freq = measurement['frequency']
                     signal = measurement['fft_abs_min']
-                    snr_values = signal / file_noise_floor
                     
                     measurement_key = f"{worksheet_name}_{folder_name}_{base_filename}"
                     if measurement_key not in plot_data:
@@ -2577,7 +2582,10 @@ def create_file_specific_snr_frequency_bands_plot(workbook, all_analysis_data):
                         band_mask = (freq >= freq_min) & (freq <= freq_max)
                         
                         if np.any(band_mask):
-                            band_snr = np.mean(snr_values[band_mask])
+                            # Use band-averaged approach: average signal and noise separately, then divide
+                            band_signal = signal[band_mask]
+                            band_noise = file_noise_floor[band_mask]
+                            band_snr = np.mean(band_signal) / np.mean(band_noise)
                             plot_data[measurement_key][band_name] = band_snr
     
     # Prepare data for Excel chart
