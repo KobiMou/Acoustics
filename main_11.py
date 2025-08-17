@@ -102,16 +102,17 @@ def safe_divide(numerator, denominator, default=0):
         else:
             return default
 
-def calculate_robust_snr(signal, noise_floor, method='capped', max_snr_db=60, min_noise_percentile=10):
+def calculate_robust_snr(signal, noise_floor, method='capped', max_snr_db=60, min_noise_percentile=10, freq=None):
     """
     Calculate robust SNR that handles near-zero noise values appropriately
     
     Args:
         signal: Signal power spectrum or PSD
         noise_floor: Noise floor baseline
-        method: 'adaptive', 'percentile', 'hybrid', or 'capped'
+        method: 'adaptive', 'percentile', 'hybrid', 'capped', or 'frequency_bands'
         max_snr_db: Maximum SNR in dB to cap extreme values
         min_noise_percentile: Percentile to use for minimum noise threshold
+        freq: Frequency array (required for 'frequency_bands' method)
     
     Returns:
         dict: Contains linear SNR, dB SNR, and metadata
@@ -153,7 +154,77 @@ def calculate_robust_snr(signal, noise_floor, method='capped', max_snr_db=60, mi
         effective_noise = np.maximum(noise_floor, hybrid_min)
     
     # Method 4: Simple capping
-    else:  # method == 'capped'
+    elif method == 'capped':
+        # Use a fixed fraction of the noise floor as minimum
+        min_fraction = 0.5
+        if hasattr(noise_floor, '__len__'):
+            mean_noise = np.mean(noise_floor)
+            effective_noise = np.maximum(noise_floor, min_fraction * mean_noise)
+        else:
+            effective_noise = np.maximum(noise_floor, min_fraction * noise_floor)
+    
+    # Method 5: Frequency band-based capping
+    elif method == 'frequency_bands':
+        """
+        Method 5: Frequency band-based capping
+        Similar to method 4 (Simple capping) but calculates mean_noise for each frequency band
+        as defined in leak_bands. Each frequency SNR value is divided by the corresponding 
+        mean noise of the suitable leak_band frequency band.
+        """
+        if freq is None:
+            raise ValueError("freq parameter is required for 'frequency_bands' method")
+        
+        # Define leak_bands (same as in detect_leak_frequency_bands function)
+        leak_bands = [
+            # Very low frequency bands (1-100 Hz) - 10 bands
+            (1, 10),       # Ultra-low frequency structural
+            (10, 20),      # Very low frequency vibrations
+            (20, 30),      # Low frequency structural response
+            (30, 40),      # Mechanical vibrations
+            (40, 50),      # Power line and mechanical harmonics
+            (50, 60),      # Power frequency range
+            (60, 70),      # Post-power frequency
+            (70, 80),      # Low acoustic range
+            (80, 90),      # Pre-acoustic range
+            (90, 100),     # Low acoustic transition
+            # Refined frequency bands
+            # 100-500 Hz range in 50 Hz increments
+            (100, 150),    # Low structural range 1
+            (150, 200),    # Low structural range 2
+            (200, 250),    # Low structural range 3
+            (250, 300),    # Low structural range 4
+            (300, 350),    # Low structural range 5
+            (350, 400),    # Low structural range 6
+            (400, 450),    # Low structural range 7
+            (450, 500),    # Low structural range 8
+            # 500-2000 Hz range in 1000 Hz jumps
+            (500, 1500),   # Mid frequency acoustic emissions 1
+            (1500, 2000),  # Mid frequency acoustic emissions 2
+            # Original higher frequency bands
+            (2000, 8000),  # High frequency turbulence
+            (8000, 20000)  # Ultrasonic range
+        ]
+        
+        # Initialize effective noise as a copy of noise_floor
+        effective_noise = np.copy(noise_floor)
+        freq = np.asarray(freq)
+        
+        # Calculate mean noise for each frequency band
+        for f_low, f_high in leak_bands:
+            band_mask = (freq >= f_low) & (freq <= f_high)
+            
+            if np.any(band_mask):
+                # Calculate mean noise for this frequency band
+                band_noise = noise_floor[band_mask]
+                mean_band_noise = np.mean(band_noise)
+                
+                # Apply capping with frequency-specific mean noise
+                min_fraction = 0.5
+                band_min_noise = min_fraction * mean_band_noise
+                effective_noise[band_mask] = np.maximum(band_noise, band_min_noise)
+    
+    # Default fallback (same as capped method)
+    else:
         # Use a fixed fraction of the noise floor as minimum
         min_fraction = 0.5
         if hasattr(noise_floor, '__len__'):
