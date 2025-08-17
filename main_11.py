@@ -11,7 +11,7 @@ import soundfile as sf
 from scipy.io import wavfile
 
 # Update path to point to folder containing folders with WAV files
-path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_05_08_2025_buff\WAV'
+path = r'D:\OneDrive - Arad Technologies Ltd\ARAD_Projects\ALD\tests\test_05_08_2025_buff\WAV_min_NoiseSNR50per'
 
 # Get all subfolders in the main path
 subfolders = [f for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]
@@ -101,6 +101,145 @@ def safe_divide(numerator, denominator, default=0):
             return np.full_like(numerator, default, dtype=float)
         else:
             return default
+
+def calculate_robust_snr(signal, noise_floor, method='capped', max_snr_db=60, min_noise_percentile=10):
+    """
+    Calculate robust SNR that handles near-zero noise values appropriately
+    
+    Args:
+        signal: Signal power spectrum or PSD
+        noise_floor: Noise floor baseline
+        method: 'adaptive', 'percentile', 'hybrid', or 'capped'
+        max_snr_db: Maximum SNR in dB to cap extreme values
+        min_noise_percentile: Percentile to use for minimum noise threshold
+    
+    Returns:
+        dict: Contains linear SNR, dB SNR, and metadata
+    """
+    # Ensure inputs are numpy arrays
+    signal = np.asarray(signal)
+    noise_floor = np.asarray(noise_floor)
+    
+    # Method 1: Adaptive minimum noise floor
+    if method == 'adaptive':
+        # Use a combination of statistical properties to set minimum noise floor
+        if noise_floor.size > 1:
+            noise_std = np.std(noise_floor)
+            noise_mean = np.mean(noise_floor)
+            # Set minimum noise as mean - 2*std, but not less than 1% of mean
+            adaptive_min = max(noise_mean - 2*noise_std, 0.01 * noise_mean)
+        else:
+            adaptive_min = 0.01 * noise_floor
+        
+        effective_noise = np.maximum(noise_floor, adaptive_min)
+    
+    # Method 2: Percentile-based minimum
+    elif method == 'percentile':
+        if noise_floor.size > 1:
+            min_noise = np.percentile(noise_floor, min_noise_percentile)
+        else:
+            min_noise = 0.1 * noise_floor
+        effective_noise = np.maximum(noise_floor, min_noise)
+    
+    # Method 3: Hybrid approach
+    elif method == 'hybrid':
+        # Combine percentile and adaptive methods
+        if noise_floor.size > 1:
+            percentile_min = np.percentile(noise_floor, min_noise_percentile)
+            noise_mean = np.mean(noise_floor)
+            hybrid_min = max(percentile_min, 0.01 * noise_mean)
+        else:
+            hybrid_min = 0.1 * noise_floor
+        effective_noise = np.maximum(noise_floor, hybrid_min)
+    
+    # Method 4: Simple capping
+    else:  # method == 'capped'
+        # Use a fixed fraction of the noise floor as minimum
+        min_fraction = 0.5
+        if hasattr(noise_floor, '__len__'):
+            mean_noise = np.mean(noise_floor)
+            effective_noise = np.maximum(noise_floor, min_fraction * mean_noise)
+        else:
+            effective_noise = np.maximum(noise_floor, min_fraction * noise_floor)
+    
+    # Calculate linear SNR
+    snr_linear = signal / effective_noise
+    
+    # Calculate SNR in dB with capping
+    snr_db = 10 * np.log10(snr_linear)
+    
+    # Cap extreme SNR values
+    max_snr_linear = 10**(max_snr_db/10)
+    snr_linear_capped = np.minimum(snr_linear, max_snr_linear)
+    snr_db_capped = np.minimum(snr_db, max_snr_db)
+    
+    # Detect where capping occurred
+    capped_mask = snr_linear > max_snr_linear
+    
+    return {
+        'snr_linear': snr_linear_capped,
+        'snr_db': snr_db_capped,
+        'effective_noise_floor': effective_noise,
+        'original_noise_floor': noise_floor,
+        'capped_mask': capped_mask,
+        'capped_count': np.sum(capped_mask) if hasattr(capped_mask, '__len__') else int(capped_mask),
+        'method_used': method,
+        'max_snr_db_limit': max_snr_db
+    }
+
+def calculate_robust_snr_ratio(signal_mean, baseline_mean, baseline_std=None, method='statistical'):
+    """
+    Calculate robust SNR ratio for frequency band analysis
+    
+    Args:
+        signal_mean: Mean power in signal band
+        baseline_mean: Mean power in baseline/noise band  
+        baseline_std: Standard deviation of baseline (optional)
+        method: 'statistical', 'conservative', or 'adaptive'
+    
+    Returns:
+        dict: Contains SNR ratio and confidence metrics
+    """
+    
+    if method == 'statistical' and baseline_std is not None:
+        # Use statistical properties to set minimum baseline
+        min_baseline = max(baseline_mean - 2*baseline_std, 0.1*baseline_mean)
+        effective_baseline = max(baseline_mean, min_baseline)
+    elif method == 'conservative':
+        # Conservative approach - use 10% of baseline mean as minimum
+        effective_baseline = max(baseline_mean, 0.1*baseline_mean)
+    else:  # adaptive
+        # Adaptive based on signal level
+        if signal_mean > 0:
+            # Set minimum baseline as 1% of signal to prevent extreme ratios
+            dynamic_min = 0.01 * signal_mean
+            effective_baseline = max(baseline_mean, dynamic_min)
+        else:
+            effective_baseline = max(baseline_mean, np.finfo(float).eps)
+    
+    snr_ratio = signal_mean / effective_baseline
+    
+    # Calculate confidence metrics
+    confidence = 'high'
+    if baseline_std is not None:
+        cv = baseline_std / baseline_mean if baseline_mean > 0 else float('inf')
+        if cv > 0.5:
+            confidence = 'low'
+        elif cv > 0.2:
+            confidence = 'medium'
+    
+    # Cap extreme ratios
+    max_ratio = 1000  # Maximum ratio of 1000:1 (30 dB)
+    snr_ratio_capped = min(snr_ratio, max_ratio)
+    
+    return {
+        'snr_ratio': snr_ratio_capped,
+        'effective_baseline': effective_baseline,
+        'original_baseline': baseline_mean,
+        'confidence': confidence,
+        'capped': snr_ratio > max_ratio,
+        'method_used': method
+    }
 
 def sanitize_excel_value(value, default=0):
     """
@@ -479,7 +618,9 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 baseline_std = np.std(baseline_band)
                 leak_mean = np.mean(leak_band)
                 
-                snr_ratio = leak_mean / np.maximum(baseline_mean, np.finfo(float).eps)
+                # Calculate robust SNR ratio
+                snr_ratio_result = calculate_robust_snr_ratio(leak_mean, baseline_mean, baseline_std, method='statistical')
+                snr_ratio = snr_ratio_result['snr_ratio']
                 z_score = (leak_mean - baseline_mean) / np.maximum(baseline_std, np.finfo(float).eps)
                 
                 results[f'band_{f_low}_{f_high}Hz'] = {
@@ -494,9 +635,12 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
     def detect_leak_power_ratio(leak_psd, noleak_baseline, threshold_dB=8):
         """Detect based on power ratio in dB"""
         baseline_power = np.mean(noleak_baseline, axis=0)
-        baseline_power = np.maximum(baseline_power, np.finfo(float).eps)
         
-        power_ratio_dB = 10 * np.log10(leak_psd / baseline_power)
+        # Use robust SNR calculation for power ratio
+        snr_result = calculate_robust_snr(leak_psd, baseline_power, method='adaptive', max_snr_db=40)
+        power_ratio_linear = snr_result['snr_linear']
+        power_ratio_dB = snr_result['snr_db']
+        
         leak_detected = power_ratio_dB > threshold_dB
         
         return {
@@ -587,19 +731,21 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
         if noleak_psd_data:
             # Create global noise floor baseline
             noise_floor = np.mean(np.vstack(noleak_psd_data), axis=0)
-            noise_floor = np.maximum(noise_floor, np.finfo(float).eps)  # Avoid division by zero
+            # Note: Division by zero protection now handled by robust SNR functions
             
             # Create global FFT-based noise floor baseline
             fft_noise_floor = np.mean(np.vstack(noleak_fft_data), axis=0)
-            fft_noise_floor = np.maximum(fft_noise_floor, np.finfo(float).eps)  # Avoid division by zero
+            # Note: Division by zero protection now handled by robust SNR functions
             
             # Update SNR data for all measurements
             for data in analysis_data:
-                # Calculate SNR in linear scale for all measurements (including NoLeak)
-                snr = data['psd_avg'] / noise_floor
+                # Calculate robust SNR in linear scale for all measurements (including NoLeak)
+                snr_result = calculate_robust_snr(data['psd_avg'], noise_floor, method='adaptive', max_snr_db=60)
+                snr = snr_result['snr_linear']
                 
-                # Calculate FFT-based SNR in linear scale for all measurements (including NoLeak)
-                snr_fft = data['fft_abs_min'] / fft_noise_floor
+                # Calculate robust FFT-based SNR in linear scale for all measurements (including NoLeak)
+                snr_fft_result = calculate_robust_snr(data['fft_abs_min'], fft_noise_floor, method='adaptive', max_snr_db=60)
+                snr_fft = snr_fft_result['snr_linear']
                 
                 # Update the worksheet with SNR values
                 sheet_name = data['filename']
@@ -992,19 +1138,21 @@ def process_folder_analysis(subfolder_path, subfolder_name, folder_data):
                 if group['noleak']:
                     # Create WAV file-specific noise floor (each WAV file uses only its own NoLeak data)
                     wav_file_noise_floor = np.mean(np.vstack([data['psd_avg'] for data in group['noleak']]), axis=0)
-                    wav_file_noise_floor = np.maximum(wav_file_noise_floor, np.finfo(float).eps)
+                    # Note: Division by zero protection now handled by robust SNR functions
                     
                     # Create WAV file-specific FFT-based noise floor
                     wav_file_fft_noise_floor = np.mean(np.vstack([data['fft_abs_min'] for data in group['noleak']]), axis=0)
-                    wav_file_fft_noise_floor = np.maximum(wav_file_fft_noise_floor, np.finfo(float).eps)
+                    # Note: Division by zero protection now handled by robust SNR functions
                     
                     # Calculate SNR for all measurements from this WAV file
                     for data in group['all_measurements']:
-                        # Calculate file-specific SNR in linear scale
-                        snr_file = data['psd_avg'] / wav_file_noise_floor
+                        # Calculate robust file-specific SNR in linear scale
+                        snr_file_result = calculate_robust_snr(data['psd_avg'], wav_file_noise_floor, method='adaptive', max_snr_db=60)
+                        snr_file = snr_file_result['snr_linear']
                         
-                        # Calculate file-specific FFT-based SNR in linear scale
-                        snr_fft_file = data['fft_abs_min'] / wav_file_fft_noise_floor
+                        # Calculate robust file-specific FFT-based SNR in linear scale
+                        snr_fft_file_result = calculate_robust_snr(data['fft_abs_min'], wav_file_fft_noise_floor, method='adaptive', max_snr_db=60)
+                        snr_fft_file = snr_fft_file_result['snr_linear']
                         
                         # Update the worksheet with file-specific SNR values
                         sheet_name = data['filename']
